@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pio/
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# Configuration secrets
+.env
+esp32/include/wifi_credentials.h
+
+# Logs
+logs/
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+.vscode/settings.json
