@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     ws_host: str = Field("0.0.0.0", alias="WS_HOST")
     ws_port: int = Field(8765, alias="WS_PORT")
 
+    # Audio Output Configuration (Phase 4.2 - "bluetooth" or "esp32")
+    output_device: str = Field("bluetooth", alias="OUTPUT_DEVICE")
+
     # Tell Pydantic settings where to find the local .env file
     model_config = SettingsConfigDict(
         env_file=os.path.join(BASE_DIR, ".env"),

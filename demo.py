@@ -6,24 +6,21 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
 
 from communication.websocket_server import WebSocketServer
-from audio.text_to_speech import TextToSpeech
+from audio.audio_manager import AudioManager
+from config.settings import settings
 
 # Pre-defined showcase responses customized for JECRC University
 PRESET_RESPONSES = {
-    "1": ("Introduction", "welcome to J E C R C University, now the crazy builders of your college are coming and trust me you are not ready for this"),
+    "1": ("Introduction", "Welcome freshers to J E C R C University, now the crazy builders of your college are coming and trust me you are not ready for this."),
     "2": ("Directions to Admissions", "The admissions block is located straight ahead, right next to the central library."),
     "3": ("Directions to Cafeteria", "You can find the cafeteria on the ground floor of the main engineering block."),
-    "4": ("Robot Capabilities", "I am running on an E S P 32 controller, communicating wirelessly over WebSockets, with audio playing via Bluetooth."),
+    "4": ("Robot Capabilities", "I am running on an E S P 32 controller, communicating wirelessly over WebSockets, with dual-mode audio support."),
     "5": ("Farewell", "Thank you for visiting our campus. Have a wonderful day!")
 }
 
-# Initialize local platform voice engine (SAPI5 on Windows)
-tts = TextToSpeech()
-
-def run_automated_showcase(server: WebSocketServer):
+def run_automated_showcase(audio: AudioManager):
     """
     Plays the entire sequence of preset responses automatically with delays.
-    Useful for a fully hands-free showcase.
     """
     print("\n[DEMO] Starting Automated Showcase Sequence...")
     sequence = ["1", "2", "3", "4", "5"]
@@ -32,31 +29,34 @@ def run_automated_showcase(server: WebSocketServer):
         name, text = PRESET_RESPONSES[num]
         print(f"\n[DEMO] Speaking: [{name}] -> '{text}'")
         
-        # 1. Notify ESP32 over WebSocket
-        if server.is_connected:
-            server.send_message("status", {"action": "speaking", "text": text})
-            
-        # 2. Play speech locally on laptop (routes to paired Bluetooth speaker)
-        tts.speak(text)
+        # Play via the audio abstraction layer
+        audio.speak(text)
         
-        # 3. Notify ESP32 speech is done
-        if server.is_connected:
-            server.send_message("status", {"action": "idle"})
-            
-        time.sleep(1.0) # Short break between sentences
+        # If the output device is the remote ESP32 speaker, we need to sleep 
+        # to allow the physical audio on the board to finish playing.
+        if settings.output_device.lower() == "esp32":
+            duration = (len(text) * 0.08) + 2.5
+            print(f"[DEMO] Waiting {duration:.1f} seconds for ESP32 speaker to finish...")
+            time.sleep(duration)
+        else:
+            # Laptop SAPI5 audio is blocking, so just a brief transition pause
+            time.sleep(1.0)
             
     print("\n[DEMO] Automated Showcase Sequence Complete!")
 
 def main():
     print("==================================================")
-    print("    CAMPUS GUIDE ROBOT - EMERGENCY DEMO PANEL     ")
+    print("    CAMPUS GUIDE ROBOT - DUAL-MODE DEMO PANEL     ")
     print("==================================================")
-    print("[INFO] This mode runs 100% offline (no Gemini API required).")
-    print("[INFO] Audio plays through the laptop's default Bluetooth speaker.")
+    print(f"[INFO] Current Audio Output: [{settings.output_device.upper()}]")
+    print("       (Change OUTPUT_DEVICE in .env to switch)")
     
-    # Initialize the WebSocket server
+    # 1. Initialize the WebSocket server
     server = WebSocketServer()
     server.start()
+    
+    # 2. Initialize the Audio Output Abstraction Layer (AudioManager)
+    audio = AudioManager(server)
     
     print("\n[INFO] WebSocket server active. Please turn on your ESP32.")
     print("Waiting up to 3 seconds for wireless connection...")
@@ -71,7 +71,7 @@ def main():
             print("\n[SUCCESS] Robot connected wirelessly!")
             time.sleep(1.0)
         else:
-            print("\n[INFO] No ESP32 detected. Running in Local Speaker Mode (Direct Bluetooth).")
+            print("\n[INFO] No ESP32 detected. Proceeding in Local Control Mode.")
         
         while True:
             print("\n--------------------------------------------------")
@@ -90,23 +90,14 @@ def main():
                 break
                 
             elif choice == "A":
-                run_automated_showcase(server)
+                run_automated_showcase(audio)
                 
             elif choice in PRESET_RESPONSES:
                 label, text = PRESET_RESPONSES[choice]
                 print(f"\n[DEMO] Activating: '{text}'")
                 
-                # 1. Notify ESP32 speaking status
-                if server.is_connected:
-                    server.send_message("status", {"action": "speaking", "text": text})
-                
-                # 2. Speak locally (routes to Bluetooth speaker)
-                tts.speak(text)
-                
-                # 3. Notify ESP32 idle status
-                if server.is_connected:
-                    server.send_message("status", {"action": "idle"})
-                    
+                # Speak via the audio abstraction layer
+                audio.speak(text)
                 print("[DEMO] Playback complete.")
                     
             else:

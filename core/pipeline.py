@@ -2,12 +2,13 @@ import time
 import re
 from brain.gemini_client import GeminiClient
 from communication.websocket_server import WebSocketServer
-from audio.text_to_speech import TextToSpeech
+from communication.web_server import RobotWebServer
+from audio.audio_manager import AudioManager
 
 class ConversationPipeline:
     """
     Orchestrates the entire AI conversation flow:
-    Keyboard input -> Gemini Client API -> Laptop TTS (Bluetooth Speaker) & ESP32 WebSocket Status.
+    Keyboard input -> Gemini Client API -> Decoupled Audio Layer.
     """
     def __init__(self) -> None:
         """
@@ -15,11 +16,24 @@ class ConversationPipeline:
         """
         print("[PIPELINE] Initializing core modules...")
         self.gemini = GeminiClient()
-        self.tts = TextToSpeech()
         
-        # Initialize and start the WebSocket Server
+        # Initialize and start the HTTP Web Server (Port 8000)
+        self.web_server = RobotWebServer()
+        self.web_server.start()
+        
+        # Initialize and start the WebSocket Server (Port 8765)
         self.ws_server = WebSocketServer()
         self.ws_server.start()
+        
+        # Register incoming web query callback
+        self.ws_server.on_query_callback = self.run_turn
+        
+        # Initialize the Decoupled Audio Layer (Factory Router)
+        self.audio = AudioManager(self.ws_server)
+        
+        # Generate and print the permanent terminal QR Code for local connections
+        from communication.qr_generator import generate_qr_code
+        generate_qr_code()
             
         print("[PIPELINE] Ready.")
 
@@ -50,48 +64,26 @@ class ConversationPipeline:
         
         print(f"[PIPELINE] Response received in {latency:.2f} seconds.")
         print(f"\nGemini Response: {response_text}\n")
+        # 2. Broadcast speaking status to all phone dashboards
+        self.ws_server.broadcast_to_phones("status", {"action": "speaking", "text": response_text})
 
-        # 2. Sanitize the response (useful for status transmission)
-        sanitized_text = self._sanitize_for_tts(response_text)
-        print(f"[PIPELINE] Sanitized for ESP32: '{sanitized_text}'")
+        # 3. Speak the response via the Audio Layer (Decoupled Output strategy)
+        self.audio.speak(response_text)
 
-        # 3. Transmit "speaking" status to ESP32 wirelessly via WebSocket
-        if self.ws_server.is_connected:
-            print("[PIPELINE] Notifying ESP32 (speaking status)...")
-            self.ws_server.send_message("status", {"action": "speaking", "text": sanitized_text})
+        # 4. Broadcast return to idle and append response to web app history lists
+        self.ws_server.broadcast_to_phones("status", {"action": "idle"})
+        self.ws_server.broadcast_to_phones("response", {
+            "question": clean_input,
+            "answer": response_text
+        })
 
-        # 4. Speak the response (blocks until finished).
-        # Plays automatically on the laptop's default audio output (your Bluetooth speaker).
-        print("[PIPELINE] Speaking response...")
-        self.tts.speak(response_text)
-        print("[PIPELINE] Speech finished.")
-
-        # 5. Transmit "idle" status back to ESP32
-        if self.ws_server.is_connected:
-            self.ws_server.send_message("status", {"action": "idle"})
-            print("[PIPELINE] Notified ESP32 (idle status).")
-
-    def _sanitize_for_tts(self, text: str) -> str:
+    def close(self) -> None:
         """
-        Cleans the string so it only contains characters compatible with 
-        the ESP32 SAM speech engine (ASCII alphanumeric and simple punctuation).
-        Limits sentence length for vocal clarity.
+        Cleanly stops background services (e.g. WebSocket and HTTP Servers).
         """
-        # 1. Extract the first sentence to prevent long, robotic run-on speech
-        sentences = text.split('.')
-        first_sentence = sentences[0]
-        
-        # If the first segment is too short (e.g., "Yes."), try adding the second sentence
-        if len(first_sentence.strip()) < 10 and len(sentences) > 1:
-            first_sentence = first_sentence + ". " + sentences[1]
-            
-        # 2. Restrict length to 120 characters to fit SAM buffer limits
-        truncated = first_sentence[:120].strip()
-        
-        # 3. Remove markdown symbols (asterisks, hashtags) and emojis
-        # Keep only letters, numbers, spaces, and basic punctuation
-        allowed_pattern = re.compile(r'[^a-zA-Z0-9\s.,!?]')
-        sanitized = allowed_pattern.sub('', truncated)
-        
-        return sanitized
+        print("[PIPELINE] Shutting down conversation pipeline...")
+        if hasattr(self, 'web_server') and self.web_server:
+            self.web_server.stop()
+        if hasattr(self, 'ws_server') and self.ws_server:
+            self.ws_server.stop()
 

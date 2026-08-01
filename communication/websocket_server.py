@@ -1,246 +1,306 @@
-"""
-WebSocket Server for Campus Guide Robot.
-
-Purpose:
-    Runs a WebSocket server on the laptop. The ESP32 connects to this
-    server over Wi-Fi. When the pipeline has a Gemini response to speak,
-    it calls send_speech() which transmits a JSON message to the ESP32.
-
-Architecture:
-    - The server runs in a background daemon thread with its own asyncio event loop.
-    - The pipeline (synchronous) calls send_speech() which safely pushes
-      the message into the async loop using run_coroutine_threadsafe().
-    - Only one ESP32 client connection is accepted at a time.
-
-Message Format:
-    {
-        "type": "speech",
-        "id": 1,
-        "text": "Welcome to JECRC University."
-    }
-
-    Future-compatible types: "motor", "gesture", "status", etc.
-"""
-
 import asyncio
 import json
 import threading
 import time
+from typing import Set, Dict, Any, Callable
 from config.settings import settings
-
+from config.robot_identity import robot_identity
 
 class WebSocketServer:
     """
-    Manages a persistent WebSocket connection between the laptop and ESP32.
-    Runs the async server on a background thread so the synchronous pipeline
-    can call send_speech() without blocking.
+    Central WebSocket server routing real-time communication between
+    the robot hardware (ESP32) and multiple browser companion web apps (Phones).
+    Runs asynchronously on a background daemon thread.
     """
-
     def __init__(self) -> None:
+        self.host: str = settings.ws_host
+        self.port: int = settings.ws_port
+
+        # Connection sets
+        self.robot_client = None           # Active ESP32 WebSocket connection
+        self.phone_clients: Set = set()    # Active Phone browser connections
+
+        # Auto-incrementing message ID counter
+        self.message_id: int = 0
+
+        # Background thread properties
+        self._loop: asyncio.AbstractEventLoop = None
+        self._thread: threading.Thread = None
+        self._server = None
+        self._ready_event = threading.Event()
+
+        # Query Callback: registered by the core pipeline to handle input queries
+        self.on_query_callback: Callable[[str], None] = None
+
+        print(f"[WS SERVER] Initialized central router for port {self.port}")
+
+    @property
+    def is_connected(self) -> bool:
         """
-        Initializes server configuration from settings.
-        Does NOT start the server yet — call start() explicitly.
+        Backward compatibility helper mapping to ESP32 connection state.
         """
-        self.host = settings.ws_host
-        self.port = settings.ws_port
-
-        # Connection state
-        self.client = None          # The single connected ESP32 websocket object
-        self.is_connected = False   # True when ESP32 is actively connected
-        self.message_id = 0         # Auto-incrementing message counter
-
-        # Background thread internals
-        self._loop = None           # The asyncio event loop running in the thread
-        self._thread = None         # The background daemon thread
-        self._server = None         # The websockets server object
-        self._ready_event = threading.Event()  # Signals when server is listening
-
-        print(f"[WS SERVER] Initialized for {self.host}:{self.port}")
+        return self.robot_client is not None
 
     def start(self) -> None:
         """
-        Launches the WebSocket server on a background daemon thread.
-
-        Why a background thread?
-            The main thread runs the synchronous keyboard input loop.
-            The WebSocket server needs its own asyncio event loop to
-            listen for incoming ESP32 connections concurrently.
-            A daemon thread dies automatically when the main program exits.
+        Launches the WebSocket server asynchronously on a background thread.
         """
         self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
         self._thread.start()
 
-        # Block the caller briefly until the server is actually listening.
-        # This prevents the pipeline from trying to send before the server is up.
+        # Wait briefly for the server socket to listen
         if self._ready_event.wait(timeout=5.0):
-            print(f"[WS SERVER] Listening on ws://{self.host}:{self.port}")
+            print(f"[WS SERVER] Central WebSocket router active on ws://{self.host}:{self.port}")
         else:
-            print("[WS SERVER WARNING] Server did not start within 5 seconds.")
+            print("[WS SERVER WARNING] WebSocket server startup timeout.")
 
     def _run_event_loop(self) -> None:
-        """
-        Internal: Creates a new asyncio event loop and runs the server forever.
-        This method executes entirely inside the background thread.
-        """
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._serve())
+        try:
+            self._loop.run_until_complete(self._serve())
+        except (asyncio.CancelledError, RuntimeError):
+            # Suppress asyncio cancellation/shutdown warnings during exit
+            pass
 
     async def _serve(self) -> None:
-        """
-        Internal: Starts the websockets server and blocks forever.
-        Uses the modern websockets.serve() async context manager.
-        """
-        # Import here to keep the module importable even if websockets
-        # is not yet installed (gives a clear error at runtime, not import time).
         import websockets
-
         async with websockets.serve(
             self._handle_client,
             self.host,
             self.port,
-            ping_interval=20,     # Server sends ping every 20 seconds
-            ping_timeout=10,      # Client must respond within 10 seconds
-            close_timeout=5       # Grace period for clean disconnection
+            ping_interval=20,
+            ping_timeout=10,
+            close_timeout=5
         ) as server:
             self._server = server
-            self._ready_event.set()  # Signal that the server is now listening
-            await asyncio.Future()   # Run forever (until thread is killed)
+            self._ready_event.set()
+            await asyncio.Future()  # Run forever
 
     async def _handle_client(self, websocket) -> None:
-        """
-        Handles a single ESP32 WebSocket client connection.
-
-        Only one client is supported at a time. If a new client connects
-        while an old one exists, the old one is replaced (the ESP32 may
-        have rebooted and reconnected with a fresh socket).
-
-        Args:
-            websocket: The connected client's websocket object.
-        """
         import websockets
-
-        client_address = websocket.remote_address
-        print(f"[WS SERVER] ESP32 connected from {client_address}")
-
-        # Replace any stale previous connection
-        if self.client is not None:
-            print("[WS SERVER] Replacing previous stale connection.")
-            try:
-                await self.client.close()
-            except Exception:
-                pass
-
-        self.client = websocket
-        self.is_connected = True
+        
+        path = getattr(websocket, 'path', '/')
+        is_phone = "phone" in path.lower()
+        is_robot = "robot" in path.lower()
+        
+        client_type = "unknown"
+        
+        # Categorize by connection path if possible
+        if is_phone:
+            client_type = "phone"
+            self.phone_clients.add(websocket)
+            print(f"[WS SERVER] Browser companion connected from {websocket.remote_address}")
+            await self._send_status_to_phone(websocket)
+        elif is_robot:
+            client_type = "robot"
+            await self._register_robot(websocket)
 
         try:
-            # Listen for incoming messages from ESP32 (heartbeats, status, etc.)
             async for raw_message in websocket:
                 try:
                     data = json.loads(raw_message)
                     msg_type = data.get("type", "unknown")
+                    
+                    # Handle handshake / default fallback categorization
+                    if client_type == "unknown":
+                        if data.get("client") == "phone" or msg_type == "ping":
+                            client_type = "phone"
+                            self.phone_clients.add(websocket)
+                            print(f"[WS SERVER] Browser registered from {websocket.remote_address}")
+                            await self._send_status_to_phone(websocket)
+                        else:
+                            # Assume robot for root path '/' or ESP32 status packets
+                            client_type = "robot"
+                            await self._register_robot(websocket)
 
-                    if msg_type == "heartbeat":
-                        # ESP32 sends periodic heartbeats to confirm it is alive
-                        pass  # Silently acknowledge (ping/pong handles keepalive)
-
-                    elif msg_type == "status":
-                        print(f"[WS SERVER] ESP32 status: {data}")
-
-                    elif msg_type == "ack":
-                        # ESP32 confirms it received and began speaking a message
-                        print(f"[WS SERVER] ESP32 acknowledged message #{data.get('id', '?')}")
-
-                    else:
-                        print(f"[WS SERVER] Unknown message type: {data}")
-
+                    # Route messages based on client type
+                    if client_type == "phone":
+                        await self._handle_phone_message(websocket, msg_type, data)
+                    elif client_type == "robot":
+                        await self._handle_robot_message(websocket, msg_type, data)
+                        
                 except json.JSONDecodeError:
-                    print(f"[WS SERVER] Received non-JSON data: {raw_message}")
+                    print(f"[WS SERVER WARNING] Received non-JSON message: {raw_message}")
 
         except websockets.exceptions.ConnectionClosed as e:
-            print(f"[WS SERVER] ESP32 disconnected: {e.reason} (code {e.code})")
+            print(f"[WS SERVER] Connection closed ({client_type}): {websocket.remote_address}")
         except Exception as e:
-            print(f"[WS SERVER] Connection error: {e}")
+            print(f"[WS SERVER ERROR] Connection exception: {e}")
         finally:
-            self.is_connected = False
-            self.client = None
-            print("[WS SERVER] Waiting for ESP32 to reconnect...")
+            if client_type == "phone":
+                self.phone_clients.discard(websocket)
+            elif client_type == "robot":
+                self.robot_client = None
+                print("[WS SERVER] ESP32 disconnected.")
+                self.broadcast_to_phones("robot_status", {"connected": False})
+
+    async def _register_robot(self, websocket) -> None:
+        """
+        Registers the single ESP32 client connection, dropping any stale sockets.
+        """
+        if self.robot_client is not None and self.robot_client != websocket:
+            print("[WS SERVER] Overwriting stale ESP32 socket reference.")
+            try:
+                await self.robot_client.close()
+            except Exception:
+                pass
+        
+        self.robot_client = websocket
+        print(f"[WS SERVER] ESP32 successfully registered from {websocket.remote_address}")
+        self.broadcast_to_phones("robot_status", {"connected": True})
+
+    async def _handle_phone_message(self, websocket, msg_type: str, data: dict) -> None:
+        """
+        Processes incoming dashboard events from the browser app.
+        """
+        if msg_type == "query":
+            text = data.get("text", "")
+            print(f"[WS SERVER] Phone query request: '{text}'")
+            if self.on_query_callback:
+                # Execute pipeline query in a separate thread to prevent blocking WebSocket server
+                threading.Thread(
+                    target=self.on_query_callback,
+                    args=(text,),
+                    daemon=True
+                ).start()
+        
+        elif msg_type == "ping":
+            # Quick loopback for latency visualization
+            try:
+                await websocket.send(json.dumps({
+                    "type": "pong",
+                    "timestamp": data.get("timestamp", time.time())
+                }))
+            except Exception:
+                pass
+
+        elif msg_type == "control":
+            # Forward motion/head controller commands to the ESP32 robot client
+            if self.robot_client:
+                try:
+                    await self.robot_client.send(json.dumps(data))
+                    print(f"[WS SERVER] Forwarded control command to ESP32: {data}")
+                except Exception as e:
+                    print(f"[WS SERVER ERROR] Failed to forward control to ESP32: {e}")
+
+    async def _handle_robot_message(self, websocket, msg_type: str, data: dict) -> None:
+        """
+        Processes status reports and heartbeats originating from the ESP32.
+        """
+        if msg_type == "status":
+            print(f"[WS SERVER] ESP32 telemetry packet: {data}")
+            # Broadcast the ESP32 telemetry status directly to all browsers
+            self.broadcast_to_phones("robot_telemetry", data)
+        elif msg_type == "ack":
+            print(f"[WS SERVER] ESP32 spoke message #{data.get('id', '?')}")
+        elif msg_type == "heartbeat":
+            pass
+
+    async def _send_status_to_phone(self, websocket) -> None:
+        """
+        Sends current robot configuration and state to a new browser client on startup.
+        """
+        status_payload = {
+            "type": "initial_status",
+            "robot_name": robot_identity.robot_name,
+            "network_mode": robot_identity.network_mode,
+            "robot_connected": self.robot_client is not None,
+            "gemini_connected": True,
+            "websocket_connected": True,
+            "speaker_selected": settings.output_device,
+            "fallback_ip": robot_identity.local_ip
+        }
+        try:
+            await websocket.send(json.dumps(status_payload))
+        except Exception as e:
+            print(f"[WS SERVER ERROR] Failed to send status handshake: {e}")
+
+    def broadcast_to_phones(self, msg_type: str, payload: dict) -> None:
+        """
+        Sends an event update thread-safely to all connected companion apps.
+        """
+        if not self.phone_clients or self._loop is None or self._loop.is_closed():
+            return
+
+        message = {
+            "type": msg_type,
+            "timestamp": time.time(),
+            **payload
+        }
+        json_string = json.dumps(message)
+
+        # Safely schedule the async broadcast coroutine in the loop thread
+        asyncio.run_coroutine_threadsafe(
+            self._async_broadcast(json_string),
+            self._loop
+        )
+
+    async def _async_broadcast(self, json_string: str) -> None:
+        if not self.phone_clients:
+            return
+        # Broadcast concurrently across all browser sockets
+        await asyncio.gather(
+            *(client.send(json_string) for client in list(self.phone_clients)),
+            return_exceptions=True
+        )
 
     def send_message(self, msg_type: str, payload: dict) -> bool:
         """
-        Sends a JSON message to the connected ESP32 client.
-        This is a synchronous method safe to call from the main thread.
-
-        Args:
-            msg_type: The message type string (e.g., "speech", "motor", "gesture").
-            payload: A dictionary of additional fields to include in the message.
-
-        Returns:
-            True if the message was sent successfully, False otherwise.
+        Synthesizes a JSON packet and sends it thread-safely to the ESP32.
         """
-        if not self.is_connected or self.client is None:
-            print("[WS SERVER] Cannot send: No ESP32 connected.")
+        if not self.is_connected or self.robot_client is None:
             return False
 
         if self._loop is None or self._loop.is_closed():
-            print("[WS SERVER] Cannot send: Event loop is not running.")
             return False
 
-        # Build the JSON envelope
         self.message_id += 1
         message = {
             "type": msg_type,
             "id": self.message_id,
             **payload
         }
-
         json_string = json.dumps(message)
 
         try:
-            # Schedule the async send on the background event loop
-            # and wait for it to complete (with a timeout)
             future = asyncio.run_coroutine_threadsafe(
-                self.client.send(json_string),
+                self.robot_client.send(json_string),
                 self._loop
             )
-            future.result(timeout=5.0)  # Block up to 5 seconds for delivery
+            future.result(timeout=4.0)
             return True
-
         except Exception as e:
-            print(f"[WS SERVER] Send failed: {e}")
-            self.is_connected = False
-            self.client = None
+            print(f"[WS SERVER ERROR] Send to ESP32 failed: {e}")
+            self.robot_client = None
             return False
 
     def send_speech(self, text: str) -> bool:
         """
-        Convenience method to send a speech command to the ESP32.
-        This is what the pipeline calls after getting a Gemini response.
-
-        Args:
-            text: The sanitized text string for the ESP32 to speak.
-
-        Returns:
-            True if sent successfully, False otherwise.
+        Synthesizes a speech command and routes it wirelessly to the ESP32.
         """
         return self.send_message("speech", {"text": text})
 
     def stop(self) -> None:
         """
-        Cleanly shuts down the WebSocket server and background thread.
+        Cleanly closes all sockets and terminates the async execution loop.
         """
-        print("[WS SERVER] Shutting down...")
-        self.is_connected = False
-
+        print("[WS SERVER] Shutting down Central router...")
         if self._loop and self._loop.is_running():
-            # Schedule client and server resource closure inside the loop thread
             async def shutdown_tasks():
-                if self.client:
+                # Close all browser tabs
+                for p_client in list(self.phone_clients):
                     try:
-                        await self.client.close()
+                        await p_client.close()
                     except Exception:
                         pass
+                # Close robot connection
+                if self.robot_client:
+                    try:
+                        await self.robot_client.close()
+                    except Exception:
+                        pass
+                # Close server
                 if self._server:
                     self._server.close()
                     await self._server.wait_closed()
@@ -251,5 +311,6 @@ class WebSocketServer:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
 
-        self.client = None
-        print("[WS SERVER] Shutdown complete.")
+        self.robot_client = None
+        self.phone_clients.clear()
+        print("[WS SERVER] Central router shutdown complete.")

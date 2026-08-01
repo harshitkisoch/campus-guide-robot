@@ -17,6 +17,7 @@ def main() -> None:
     print("Type your questions below.")
     print("Type 'exit' or 'quit' to shutdown the robot.\n")
 
+    pipeline = None
     try:
         # Initialize pipeline (config load -> Gemini Client -> TTS engine)
         pipeline = ConversationPipeline()
@@ -44,6 +45,9 @@ def main() -> None:
     except Exception as e:
         print(f"\n[CRITICAL FAILURE] System crashed: {e}")
         sys.exit(1)
+    finally:
+        if pipeline:
+            pipeline.close()
 
 if __name__ == "__main__":
     main()

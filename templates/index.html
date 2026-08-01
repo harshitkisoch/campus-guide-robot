@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+    <title>CAMPUS.EXE | Robot OS Dashboard</title>
+    <!-- Tailwind CSS (utility helper for layout grid and spacing flex properties) -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#e82127",
+              "secondary": "#00e5ff",
+              "tertiary": "#10b981",
+              "dark-bg": "#060709",
+              "dark-card": "#14161d"
+            }
+          }
+        }
+      }
+    </script>
+</head>
+<body class="bg-dark-bg text-slate-100 flex flex-col min-h-screen pb-16 md:pb-0">
+
+    <!-- STICKY HEADER -->
+    <header class="sticky top-0 z-40 bg-[#0e1014]/90 backdrop-blur-md border-b border-[#1f222d] h-16 flex justify-between items-center px-4 md:px-8">
+        <div class="flex items-center gap-3">
+            <!-- Retro Pixel Mascot image -->
+            <div class="w-9 h-9 bg-primary/10 border border-primary/20 rounded-lg flex items-center justify-center overflow-hidden">
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuALS8_bOVPN8zSfETJSV92k2pmDLcdOD7pHiF6CRT4TvhDrpfv_SQvMsOrNEPv9IaZblXSeDszP8cYOngL39lA81i8aDb1uDwiudNHgKu-6vsljWyohs4LWni0Jwm4kfhR1omgk2W31NyAWfWv6wODfqr80WwRDPT6dlEAaWfQdNofMg_St4bOGQJC-yzGZGFXRuO1zTrqVS9zB9XrenHr3v83W-b1U7L-XFRqgoTlTMqz1I4HD9Vby" alt="Mascot" class="w-full h-full object-cover">
+            </div>
+            <div>
+                <h1 class="font-bold tracking-tight text-sm md:text-base uppercase" id="robot-name-title">CAMPUS.EXE</h1>
+                <p class="text-[10px] text-slate-400">ROBOT OPERATING SYSTEM V3</p>
+            </div>
+        </div>
+        
+        <!-- Desktop Horizontal Nav (Hidden on Mobile) -->
+        <nav class="hidden md:flex gap-6 items-center">
+            <a class="text-xs font-bold uppercase tracking-wider text-primary border-b border-primary pb-1" href="#section-status">Dashboard</a>
+            <a class="text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white transition-colors" href="#section-interaction">Chat</a>
+            <a class="text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white transition-colors" href="#section-controller">Control</a>
+            <a class="text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white transition-colors" href="#section-history">History</a>
+            <a class="text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white transition-colors" href="#section-settings">Settings</a>
+        </nav>
+
+        <div class="flex items-center gap-3">
+            <span class="px-3 py-1 bg-tertiary/10 border border-tertiary/20 text-tertiary text-[10px] font-bold rounded-full uppercase" id="overall-status-badge">Online</span>
+            <span class="material-symbols-outlined text-slate-400 hover:text-white cursor-pointer text-xl">settings</span>
+        </div>
+    </header>
+
+    <!-- CORE 12-COLUMN RESPONSIVE LAYOUT -->
+    <main class="app-container flex-grow">
+        <!-- 
+            Mobile: 1 column grid-cols-1
+            Tablet: 2 columns md:grid-cols-2
+            Desktop: 12-column grid lg:grid-cols-12
+        -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 w-full">
+            
+            <!-- LEFT COLUMN (Interaction Panel & History - 5 Cols on Desktop) -->
+            <div class="lg:col-span-5 flex flex-col gap-6" id="column-left">
+                <!-- Section 2: Interaction Card -->
+                <div id="section-interaction" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-4">
+                        <div class="flex items-center justify-between border-b border-[#1f222d] pb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-primary text-xl">chat</span>
+                                <h2 class="text-h2 uppercase">Interaction</h2>
+                            </div>
+                            <div class="flex items-center gap-2 bg-[#1c1e28] px-2.5 py-1 rounded-full border border-slate-800">
+                                <span class="status-indicator active" id="speaking-state-dot"></span>
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400" id="speaking-state-badge">IDLE</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Sassy Response Output Box -->
+                        <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-4 min-h-[72px] flex items-center italic text-sm text-slate-300" id="live-response-box">
+                            "Ask me where blocks are or say 'kaise ho' to trigger a roasty response!"
+                        </div>
+
+                        <!-- ChatGPT-Style Input Group -->
+                        <div class="flex flex-col gap-2">
+                            <div class="relative flex items-center">
+                                <!-- Future Camera Button (Touch Target min 48px) -->
+                                <button class="absolute left-3 w-10 h-10 text-slate-500 hover:text-slate-300 flex items-center justify-center cursor-pointer" title="Camera (Future Feature)" disabled>
+                                    <span class="material-symbols-outlined text-lg">photo_camera</span>
+                                </button>
+                                <input class="w-full bg-[#0e1014] border border-[#1f222d] rounded-xl py-4 pl-12 pr-28 text-sm outline-none focus:border-slate-500 transition-colors" placeholder="Ask me anything..." type="text" id="chat-input" disabled />
+                                
+                                <div class="absolute right-2 flex items-center gap-1">
+                                    <!-- Mic Button (Touch Target 48px) -->
+                                    <button class="w-12 h-12 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center justify-center transition-colors active-press" id="btn-mic" disabled>
+                                        <span class="material-symbols-outlined text-lg" id="mic-icon">mic_off</span>
+                                    </button>
+                                    <!-- Send Button (Touch Target 48px) -->
+                                    <button class="w-12 h-12 bg-primary hover:bg-primary/90 text-white rounded-lg flex items-center justify-center transition-colors active-press" id="btn-send" disabled>
+                                        <span class="material-symbols-outlined text-lg">send</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-slate-500 px-1" id="voice-status-text">WebSocket Disconnected</p>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Section 6: Conversation History -->
+                <div id="section-history" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-4">
+                        <div class="flex items-center justify-between border-b border-[#1f222d] pb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-slate-400 text-xl">history</span>
+                                <h2 class="text-h2 uppercase">History</h2>
+                            </div>
+                        </div>
+                        
+                        <!-- Chat Bubbles Container -->
+                        <div class="history-scroll-container overflow-y-auto pr-1 max-h-[300px] flex flex-col gap-4" id="conversation-history-list">
+                            <!-- Default Welcome bubble -->
+                            <div class="chat-bubble-guide">
+                                <span class="text-[9px] text-slate-500 font-bold uppercase tracking-widest pl-1">CAMPUS.EXE</span>
+                                <div class="bubble-content">
+                                    Hi fresher! Ready to ask something or get roasted? 🤖🔥
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- CENTER COLUMN (Live Status & QR - 4 Cols on Desktop) -->
+            <div class="lg:col-span-4 flex flex-col gap-6" id="column-center">
+                <!-- Section 4: Live Status Grid -->
+                <div id="section-status" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-4">
+                        <div class="flex items-center gap-2 border-b border-[#1f222d] pb-3">
+                            <span class="material-symbols-outlined text-secondary text-xl">analytics</span>
+                            <h2 class="text-h2 uppercase">Telemetry</h2>
+                        </div>
+
+                        <!-- Responsive Status Grid (Mobile: 2 cols, Tablet: 3 cols, Desktop/XL: 3 cols) -->
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                            
+                            <!-- 1. ESP32 Link -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">ESP32 Link</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="status-indicator inactive" id="dot-esp32"></span>
+                                    <span class="text-xs font-bold text-slate-300 truncate" id="text-esp32">Offline</span>
+                                </div>
+                            </div>
+
+                            <!-- 2. Gemini API -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Gemini API</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="status-indicator active" id="dot-gemini"></span>
+                                    <span class="text-xs font-bold text-slate-300 truncate" id="text-gemini">Online</span>
+                                </div>
+                            </div>
+
+                            <!-- 3. WebSocket Router -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">WS Router</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="status-indicator inactive" id="dot-websocket"></span>
+                                    <span class="text-xs font-bold text-slate-300 truncate" id="text-websocket">Offline</span>
+                                </div>
+                            </div>
+
+                            <!-- 4. Speaker Selected -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Audio Out</span>
+                                <div class="flex items-center gap-1.5 text-slate-300">
+                                    <span class="material-symbols-outlined text-sm text-primary">volume_up</span>
+                                    <span class="text-xs font-bold truncate" id="text-speaker">Bluetooth</span>
+                                </div>
+                            </div>
+
+                            <!-- 5. Latency Ping -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Ping Delay</span>
+                                <div class="flex items-center gap-1.5 text-slate-300">
+                                    <span class="material-symbols-outlined text-sm text-secondary">speed</span>
+                                    <span class="text-xs font-bold truncate" id="text-ping">-- ms</span>
+                                </div>
+                            </div>
+
+                            <!-- 6. Battery telemetry -->
+                            <div class="bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 flex flex-col gap-1">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Battery</span>
+                                <div class="flex items-center gap-1.5 text-slate-300">
+                                    <span class="material-symbols-outlined text-sm text-tertiary">battery_3_bar</span>
+                                    <span class="text-xs font-bold truncate" id="text-battery">3.7V Status</span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Section 5: QR Code Card -->
+                <div id="section-qr" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-4 items-center">
+                        <div class="w-full flex items-center justify-between border-b border-[#1f222d] pb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-slate-400 text-lg">qr_code_2</span>
+                                <h2 class="text-h2 uppercase">Portal Access</h2>
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-row gap-4 w-full items-center justify-center">
+                            <!-- Compact Scannable QR -->
+                            <div class="w-24 h-24 bg-white rounded-lg p-1.5 flex items-center justify-center border border-slate-700 shadow-lg">
+                                <img src="/static/assets/qr_code.png" alt="QR Link" class="w-full h-full object-contain" id="portal-qr-img" onerror="this.src='https://api.qrserver.com/v1/create-qr-code/?size=100&data=http://campusguiderobot.local:8000'">
+                            </div>
+                            
+                            <!-- Network details and link copying -->
+                            <div class="flex flex-col gap-2 flex-grow">
+                                <div class="bg-[#0e1014] border border-[#1f222d] rounded-lg px-3 py-1.5 text-center overflow-hidden text-ellipsis whitespace-nowrap w-full">
+                                    <code class="text-[10px] text-slate-400" id="qr-url-text">http://campusguiderobot.local:8000</code>
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    <!-- Copy Button (Touch target 48px) -->
+                                    <button class="flex-1 h-12 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg uppercase tracking-wider flex items-center justify-center gap-1 active-press" id="btn-copy-link">
+                                        <span class="material-symbols-outlined text-sm">content_copy</span>
+                                        <span>Copy</span>
+                                    </button>
+                                    <!-- Download Button (Touch target 48px) -->
+                                    <button class="w-12 h-12 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center justify-center active-press" id="btn-download-qr" title="Download QR Code">
+                                        <span class="material-symbols-outlined text-base">download</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN (Controller & Settings - 3 Cols on Desktop) -->
+            <div class="lg:col-span-3 flex flex-col gap-6" id="column-right">
+                <!-- Section 3: Robot Controller -->
+                <div id="section-controller" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-6">
+                        <div class="flex items-center gap-2 border-b border-[#1f222d] pb-3">
+                            <span class="material-symbols-outlined text-secondary text-xl">sports_esports</span>
+                            <h2 class="text-h2 uppercase">Controller</h2>
+                        </div>
+                        
+                        <!-- Tactile Grid D-Pad (Minimum 56px / w-14 h-14 buttons) -->
+                        <div class="grid grid-cols-3 gap-3 w-48 h-48 mx-auto justify-items-center items-center">
+                            <!-- Row 1 -->
+                            <div></div>
+                            <button class="w-14 h-14 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center border border-slate-700 active-press" id="ctrl-up" disabled>
+                                <span class="material-symbols-outlined text-2xl font-bold">keyboard_arrow_up</span>
+                            </button>
+                            <div></div>
+                            
+                            <!-- Row 2 -->
+                            <button class="w-14 h-14 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center border border-slate-700 active-press" id="ctrl-left" disabled>
+                                <span class="material-symbols-outlined text-2xl font-bold">keyboard_arrow_left</span>
+                            </button>
+                            <button class="w-14 h-14 bg-primary text-white rounded-xl flex items-center justify-center border border-primary/20 active-press" id="ctrl-stop" disabled>
+                                <span class="material-symbols-outlined text-xl">block</span>
+                            </button>
+                            <button class="w-14 h-14 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center border border-slate-700 active-press" id="ctrl-right" disabled>
+                                <span class="material-symbols-outlined text-2xl font-bold">keyboard_arrow_right</span>
+                            </button>
+                            
+                            <!-- Row 3 -->
+                            <div></div>
+                            <button class="w-14 h-14 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center border border-slate-700 active-press" id="ctrl-down" disabled>
+                                <span class="material-symbols-outlined text-2xl font-bold">keyboard_arrow_down</span>
+                            </button>
+                            <div></div>
+                        </div>
+
+                        <!-- Speed Slider controls -->
+                        <div class="flex flex-col gap-2 w-full">
+                            <div class="flex justify-between text-[11px] text-slate-400">
+                                <span class="font-bold uppercase tracking-wider">Drive Speed</span>
+                                <span id="speed-value" class="font-mono text-secondary">50%</span>
+                            </div>
+                            <input type="range" min="10" max="100" value="50" class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary" id="ctrl-speed-range" disabled>
+                        </div>
+
+                        <!-- Head Angle Slider controls -->
+                        <div class="flex flex-col gap-2 w-full">
+                            <div class="flex justify-between text-[11px] text-slate-400">
+                                <span class="font-bold uppercase tracking-wider">Head Rotation</span>
+                                <span id="head-angle-value" class="font-mono text-secondary">90°</span>
+                            </div>
+                            <input type="range" min="0" max="180" value="90" class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-secondary" id="ctrl-head-range" disabled>
+                        </div>
+
+                        <!-- Servo Toggle Switch control -->
+                        <div class="flex justify-between items-center bg-[#0e1014] border border-[#1f222d] rounded-xl p-3 w-full">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Servo Tracking Mode</span>
+                            <button class="w-12 h-6 bg-slate-800 rounded-full relative border border-slate-700 transition-colors" id="btn-toggle-servo" disabled>
+                                <div class="w-4 h-4 bg-slate-400 rounded-full absolute left-1 top-1/2 -translate-y-1/2 transition-all" id="servo-toggle-handle"></div>
+                            </button>
+                        </div>
+
+                    </section>
+                </div>
+
+                <!-- Section 7: Tabbed Settings -->
+                <div id="section-settings" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-4">
+                        <div class="flex items-center gap-2 border-b border-[#1f222d] pb-3">
+                            <span class="material-symbols-outlined text-slate-400 text-xl font-bold">settings</span>
+                            <h2 class="text-h2 uppercase">Settings</h2>
+                        </div>
+
+                        <!-- Settings Tabs Navigation -->
+                        <div class="flex border-b border-[#1f222d] overflow-x-auto scrollbar-none gap-2 pb-1" id="settings-tabs">
+                            <button class="settings-tab-btn px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary border-b border-primary" data-tab="general">General</button>
+                            <button class="settings-tab-btn px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white" data-tab="audio">Audio</button>
+                            <button class="settings-tab-btn px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white" data-tab="network">Network</button>
+                            <button class="settings-tab-btn px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-white" data-tab="advanced">Advanced</button>
+                        </div>
+
+                        <!-- Tab contents -->
+                        <div class="flex flex-col gap-3 min-h-[120px]">
+                            
+                            <!-- Tab 1: General Settings -->
+                            <div class="settings-tab-content flex flex-col gap-3" id="tab-general">
+                                <div class="flex justify-between items-center bg-[#0e1014] p-3 border border-[#1f222d] rounded-xl w-full">
+                                    <div class="flex flex-col">
+                                        <span class="text-xs font-bold text-slate-300">SYSTEM REBOOT</span>
+                                        <span class="text-[9px] text-slate-500">Restart dashboard servers</span>
+                                    </div>
+                                    <button class="px-4 py-2 bg-[#1c1e28] hover:bg-slate-800 border border-slate-700 text-xs font-bold uppercase rounded-lg active-press" id="btn-reboot-exec">
+                                        Reboot
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Tab 2: Audio Settings -->
+                            <div class="settings-tab-content flex flex-col gap-3 hidden" id="tab-audio">
+                                <div class="flex justify-between items-center bg-[#0e1014] p-3 border border-[#1f222d] rounded-xl w-full">
+                                    <div class="flex flex-col">
+                                        <span class="text-xs font-bold text-slate-300">ESP32 Audio Out</span>
+                                        <span class="text-[9px] text-slate-500">Play spoken voice via robot HW-104</span>
+                                    </div>
+                                    <button class="w-12 h-6 bg-slate-800 rounded-full relative border border-slate-700 transition-colors" id="btn-toggle-speaker">
+                                        <div class="w-4 h-4 bg-slate-400 rounded-full absolute left-1 top-1/2 -translate-y-1/2 transition-all" id="speaker-toggle-handle"></div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Tab 3: Network Settings -->
+                            <div class="settings-tab-content flex flex-col gap-2 hidden" id="tab-network">
+                                <div class="flex justify-between text-xs py-1 border-b border-[#1f222d]">
+                                    <span class="text-slate-500">Hostname</span>
+                                    <span class="font-mono text-slate-300">campusguiderobot.local</span>
+                                </div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span class="text-slate-500">MDNS Status</span>
+                                    <span class="text-tertiary font-bold uppercase tracking-wider text-[10px]">Active</span>
+                                </div>
+                            </div>
+
+                            <!-- Tab 4: Advanced Diagnostics -->
+                            <div class="settings-tab-content flex flex-col gap-2 hidden" id="tab-advanced">
+                                <div class="flex justify-between text-xs py-1 border-b border-[#1f222d]">
+                                    <span class="text-slate-500">WS Port</span>
+                                    <span class="font-mono text-slate-300">8765</span>
+                                </div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span class="text-slate-500">HTTP Port</span>
+                                    <span class="font-mono text-slate-300">8000</span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MOBILE STICKY BOTTOM NAVIGATION BAR (Visible on Mobile only < 768px) -->
+    <nav class="fixed bottom-0 left-0 right-0 h-16 bg-[#0e1014]/90 backdrop-blur-md border-t border-[#1f222d] flex justify-around items-center md:hidden z-50 px-2">
+        <a href="#section-status" class="mobile-nav-item flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-primary transition-colors py-1">
+            <span class="material-symbols-outlined text-lg">dashboard</span>
+            <span class="text-[9px] uppercase tracking-widest font-semibold mt-1">Status</span>
+        </a>
+        <a href="#section-interaction" class="mobile-nav-item flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-primary transition-colors py-1">
+            <span class="material-symbols-outlined text-lg font-bold">chat</span>
+            <span class="text-[9px] uppercase tracking-widest font-semibold mt-1">Chat</span>
+        </a>
+        <a href="#section-controller" class="mobile-nav-item flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-primary transition-colors py-1">
+            <span class="material-symbols-outlined text-lg">videogame_asset</span>
+            <span class="text-[9px] uppercase tracking-widest font-semibold mt-1">Control</span>
+        </a>
+        <a href="#section-history" class="mobile-nav-item flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-primary transition-colors py-1">
+            <span class="material-symbols-outlined text-lg">history</span>
+            <span class="text-[9px] uppercase tracking-widest font-semibold mt-1">History</span>
+        </a>
+        <a href="#section-settings" class="mobile-nav-item flex flex-col items-center justify-center flex-1 text-slate-400 hover:text-primary transition-colors py-1">
+            <span class="material-symbols-outlined text-lg">settings</span>
+            <span class="text-[9px] uppercase tracking-widest font-semibold mt-1">Setup</span>
+        </a>
+    </nav>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Smooth scroll handling for mobile bottom bar
+        document.querySelectorAll('.mobile-nav-item, nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                const targetEl = document.querySelector(targetId);
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: 'smooth' });
+                    // Highlight active tab visually
+                    document.querySelectorAll('.mobile-nav-item').forEach(item => item.classList.remove('text-primary'));
+                    if (this.classList.contains('mobile-nav-item')) {
+                        this.classList.add('text-primary');
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
