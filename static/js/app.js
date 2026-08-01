@@ -427,7 +427,11 @@ class RobotDashboard {
         const labels = {
             "cute": "🌸 CUTE BESTIE",
             "savage": "💀 SAVAGE ROAST",
-            "formal": "👔 FORMAL GUIDE"
+            "formal": "👔 FORMAL GUIDE",
+            "entrepreneur": "💼 FOUNDER & ROI",
+            "entertainer": "🎭 HYPE STAR",
+            "consul": "💖 CARING CONSUL",
+            "content_advisor": "📲 VIRAL ADVISOR"
         };
         
         if (badgeEl) {
