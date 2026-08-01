@@ -66,6 +66,37 @@
             
             <!-- LEFT COLUMN (Interaction Panel & History - 5 Cols on Desktop) -->
             <div class="lg:col-span-5 flex flex-col gap-6" id="column-left">
+                
+                <!-- Section 1.5: AI Personality Switcher -->
+                <div id="section-personality" class="scroll-mt-20">
+                    <section class="card-base flex flex-col gap-3">
+                        <div class="flex items-center justify-between border-b border-[#1f222d] pb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-primary text-xl">psychology</span>
+                                <h2 class="text-h2 uppercase">AI Personality</h2>
+                            </div>
+                            <span class="text-[10px] text-slate-400 font-mono font-bold uppercase" id="current-personality-badge">🌸 CUTE BESTIE</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-primary/50 bg-primary/10 transition-all cursor-pointer" data-persona="cute" id="btn-persona-cute">
+                                <span class="text-lg">🌸</span>
+                                <span class="text-[11px] font-bold text-slate-200">Cute Bestie</span>
+                            </button>
+                            
+                            <button class="personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-[#1f222d] bg-[#0e1014] hover:bg-[#14161d] transition-all cursor-pointer opacity-70" data-persona="savage" id="btn-persona-savage">
+                                <span class="text-lg">💀</span>
+                                <span class="text-[11px] font-bold text-slate-400">Savage Roast</span>
+                            </button>
+
+                            <button class="personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-[#1f222d] bg-[#0e1014] hover:bg-[#14161d] transition-all cursor-pointer opacity-70" data-persona="formal" id="btn-persona-formal">
+                                <span class="text-lg">👔</span>
+                                <span class="text-[11px] font-bold text-slate-400">Formal Guide</span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
+
                 <!-- Section 2: Interaction Card -->
                 <div id="section-interaction" class="scroll-mt-20">
                     <section class="card-base flex flex-col gap-4">

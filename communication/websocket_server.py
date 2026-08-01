@@ -176,7 +176,15 @@ class WebSocketServer:
                 pass
 
         elif msg_type == "control":
-            # Forward motion/head controller commands to the ESP32 robot client
+            # 1. Check AI Personality Switcher request
+            if "personality" in data:
+                persona_name = data.get("personality", "cute")
+                if hasattr(self, 'on_personality_callback') and self.on_personality_callback:
+                    new_persona = self.on_personality_callback(persona_name)
+                    print(f"[WS SERVER] AI Personality updated to: [{new_persona.upper()}]")
+                    self.broadcast_to_phones("personality_status", {"personality": new_persona})
+
+            # 2. Forward motion/head controller commands to the ESP32 robot client
             if self.robot_client:
                 try:
                     await self.robot_client.send(json.dumps(data))

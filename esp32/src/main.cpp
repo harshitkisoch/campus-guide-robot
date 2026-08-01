@@ -18,9 +18,9 @@
   #define PWM_LEFT_EN         5
   #define PWM_RIGHT_EN        14
   #define SERVO_ROTATION_PIN  0  // D3
-  #define LED_MATRIX_DIN      13 // D7 (MOSI)
-  #define LED_MATRIX_CLK      14 // D5 (CLK)
-  #define LED_MATRIX_CS       15 // D8 (CS)
+  #define LED_MATRIX_DIN      13 // D7
+  #define LED_MATRIX_CLK      2  // D4
+  #define LED_MATRIX_CS       15 // D8
   #define LED_MATRIX_COUNT    4
 #else
   #include <WiFi.h>
@@ -450,51 +450,53 @@ void initHeadServo() {
 }
 
 /**
- * Actuates chassis DC motors based on target steering commands and speeds.
+ * Actuates BTS7960 High-Current DC Motor Drivers based on target steering commands and speeds.
+ * Control pins:
+ * MOTOR_LEFT_IN1  = L_PWM_FWD (Left Forward PWM)
+ * MOTOR_LEFT_IN2  = L_PWM_REV (Left Reverse PWM)
+ * MOTOR_RIGHT_IN3 = R_PWM_FWD (Right Forward PWM)
+ * MOTOR_RIGHT_IN4 = R_PWM_REV (Right Reverse PWM)
  */
 void driveRobot(const String &cmd, int speedPercent) {
   // Motor Dead-Zone Compensation: floor non-zero speeds at PWM duty 70 to overcome static friction
   int duty = (speedPercent == 0) ? 0 : map(speedPercent, 1, 100, 70, 255);
-  Serial.print("[ACTUATING] Driving ");
+  int pwmVal = map(duty, 0, 255, 0, 1023); // Scale to 10-bit PWM for ESP8266
+
+  Serial.print("[BTS7960] Driving ");
   Serial.print(cmd);
   Serial.print(" at speed ");
   Serial.print(speedPercent);
   Serial.println("%");
 
   if (cmd.equals("up")) {
-    digitalWrite(MOTOR_LEFT_IN1, HIGH);
-    digitalWrite(MOTOR_LEFT_IN2, LOW);
-    digitalWrite(MOTOR_RIGHT_IN3, HIGH);
-    digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    setMotorPwm(duty, duty);
+    analogWrite(MOTOR_LEFT_IN1, pwmVal);
+    analogWrite(MOTOR_LEFT_IN2, 0);
+    analogWrite(MOTOR_RIGHT_IN3, pwmVal);
+    analogWrite(MOTOR_RIGHT_IN4, 0);
   } 
   else if (cmd.equals("down")) {
-    digitalWrite(MOTOR_LEFT_IN1, LOW);
-    digitalWrite(MOTOR_LEFT_IN2, HIGH);
-    digitalWrite(MOTOR_RIGHT_IN3, LOW);
-    digitalWrite(MOTOR_RIGHT_IN4, HIGH);
-    setMotorPwm(duty, duty);
+    analogWrite(MOTOR_LEFT_IN1, 0);
+    analogWrite(MOTOR_LEFT_IN2, pwmVal);
+    analogWrite(MOTOR_RIGHT_IN3, 0);
+    analogWrite(MOTOR_RIGHT_IN4, pwmVal);
   } 
   else if (cmd.equals("left")) {
-    digitalWrite(MOTOR_LEFT_IN1, LOW);
-    digitalWrite(MOTOR_LEFT_IN2, HIGH);
-    digitalWrite(MOTOR_RIGHT_IN3, HIGH);
-    digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    setMotorPwm(duty, duty);
+    analogWrite(MOTOR_LEFT_IN1, 0);
+    analogWrite(MOTOR_LEFT_IN2, pwmVal);
+    analogWrite(MOTOR_RIGHT_IN3, pwmVal);
+    analogWrite(MOTOR_RIGHT_IN4, 0);
   } 
   else if (cmd.equals("right")) {
-    digitalWrite(MOTOR_LEFT_IN1, HIGH);
-    digitalWrite(MOTOR_LEFT_IN2, LOW);
-    digitalWrite(MOTOR_RIGHT_IN3, LOW);
-    digitalWrite(MOTOR_RIGHT_IN4, HIGH);
-    setMotorPwm(duty, duty);
+    analogWrite(MOTOR_LEFT_IN1, pwmVal);
+    analogWrite(MOTOR_LEFT_IN2, 0);
+    analogWrite(MOTOR_RIGHT_IN3, 0);
+    analogWrite(MOTOR_RIGHT_IN4, pwmVal);
   } 
   else if (cmd.equals("stop")) {
-    digitalWrite(MOTOR_LEFT_IN1, LOW);
-    digitalWrite(MOTOR_LEFT_IN2, LOW);
-    digitalWrite(MOTOR_RIGHT_IN3, LOW);
-    digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    setMotorPwm(0, 0);
+    analogWrite(MOTOR_LEFT_IN1, 0);
+    analogWrite(MOTOR_LEFT_IN2, 0);
+    analogWrite(MOTOR_RIGHT_IN3, 0);
+    analogWrite(MOTOR_RIGHT_IN4, 0);
   }
 }
 

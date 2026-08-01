@@ -182,6 +182,9 @@ class RobotDashboard {
                 case "response":
                     this.handleConversationResponse(data);
                     break;
+                case "personality_status":
+                    this.updatePersonalityUI(data.personality);
+                    break;
                 default:
                     console.log(`[DASHBOARD] Unrouted event:`, data);
             }
@@ -397,6 +400,47 @@ class RobotDashboard {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        });
+
+        // AI Personality Switcher Buttons
+        const personaButtons = document.querySelectorAll(".personality-btn");
+        personaButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+                const persona = btn.getAttribute("data-persona");
+                this.selectPersonality(persona);
+            });
+        });
+    }
+
+    selectPersonality(persona) {
+        if (navigator.vibrate) {
+            navigator.vibrate(40);
+        }
+        this.sendControlCommand({ personality: persona });
+        this.updatePersonalityUI(persona);
+    }
+
+    updatePersonalityUI(persona) {
+        const badgeEl = document.getElementById("current-personality-badge");
+        const personaButtons = document.querySelectorAll(".personality-btn");
+        
+        const labels = {
+            "cute": "🌸 CUTE BESTIE",
+            "savage": "💀 SAVAGE ROAST",
+            "formal": "👔 FORMAL GUIDE"
+        };
+        
+        if (badgeEl) {
+            badgeEl.innerText = labels[persona] || persona.toUpperCase();
+        }
+        
+        personaButtons.forEach(btn => {
+            const p = btn.getAttribute("data-persona");
+            if (p === persona) {
+                btn.className = "personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-primary/50 bg-primary/10 transition-all cursor-pointer opacity-100";
+            } else {
+                btn.className = "personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-[#1f222d] bg-[#0e1014] hover:bg-[#14161d] transition-all cursor-pointer opacity-70";
+            }
         });
     }
     

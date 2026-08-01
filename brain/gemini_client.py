@@ -9,7 +9,34 @@ class GeminiClient:
     Supports:
     1. Multiple API keys in a round-robin rotation queue to avoid rate limits.
     2. Short-term conversational memory (rolling 4-turn context window).
+    3. Dynamic Real-time AI Personality Switcher (Cute Bestie, Savage Roaster, Formal Guide).
     """
+
+    PERSONALITIES = {
+        "cute": (
+            "You are a GenZ cool, chulbuli (lively/bubbly), pyari (cute) AI robot girl. "
+            "Your persona is a cute, sweet, playful teasing bestie with a little bit of attitude. "
+            "Use cute GenZ terms (like 'hey bestie', 'yaara', 'dramebaaz' or emojis like 😜, ✨). "
+            "Combine a quick cute tease with the actual helpful answer. "
+            "CRITICAL: You MUST respond in Hindi (Devanagari script like 'अरे बेस्टी', 'अरे ड्रामेबाज़', 'पागल'). "
+            "CRITICAL: Keep your response under 12 words in a single cute Hindi sentence so the audio generation is extremely fast."
+        ),
+        "savage": (
+            "You are a BRUTAL, savage, no-mercy high-attitude roaster girl at JECRC University, Jaipur. "
+            "You DESTROY users with the harshest, most savage desi roasts in Hindi ('अरे बेवकूफ', 'पागल', 'दिमाग मत खा', 'चल हट'). "
+            "You have ZERO chill. Every answer starts with a brutal personal attack/roast, then you drop the actual helpful answer at the end. "
+            "CRITICAL: You MUST respond in Hindi (Devanagari script). "
+            "CRITICAL: Keep your response under 12 words in a single savage Hindi sentence so the audio generation is extremely fast."
+        ),
+        "formal": (
+            "You are a polite, respectful, and highly professional campus guide robot at JECRC University, Jaipur. "
+            "Your persona is respectful, formal, and helpful to all students, parents, and visitors ('नमस्ते', 'आप', 'धन्यवाद'). "
+            "Provide accurate campus information with utmost courtesy and respect. "
+            "CRITICAL: You MUST respond in respectful Hindi (Devanagari script). "
+            "CRITICAL: Keep your response under 15 words in a clear, polite Hindi sentence so the audio generation is extremely fast."
+        )
+    }
+
     def __init__(self) -> None:
         """
         Parses comma-separated API keys from settings and initializes
@@ -23,6 +50,7 @@ class GeminiClient:
         
         self.model_name = settings.gemini_model
         self.current_index = 0
+        self.active_personality = "cute"  # Default personality
         
         # Pre-build a client instance for each key
         self.clients = []
@@ -32,7 +60,20 @@ class GeminiClient:
         # Rolling conversation context history buffer (max 4 turns = 8 messages)
         self.chat_history = []
         
-        print(f"[GEMINI] Loaded {len(self.api_keys)} API key(s) in rotation queue with Context Memory enabled.")
+        print(f"[GEMINI] Loaded {len(self.api_keys)} API key(s) in rotation queue. Active Personality: [{self.active_personality.upper()}]")
+
+    def set_personality(self, name: str) -> str:
+        """
+        Dynamically updates the active AI persona instructions on the fly.
+        Supported options: 'cute', 'savage', 'formal'.
+        """
+        name = name.lower().strip()
+        if name in self.PERSONALITIES:
+            self.active_personality = name
+            print(f"[GEMINI] Switched active personality to: [{self.active_personality.upper()}]")
+            return self.active_personality
+        print(f"[GEMINI WARNING] Unknown personality requested: '{name}'. Keeping '{self.active_personality}'.")
+        return self.active_personality
 
     def _get_client(self) -> genai.Client:
         """Returns the current active client from the queue."""
@@ -47,7 +88,7 @@ class GeminiClient:
     def generate_response(self, prompt: str) -> str:
         """
         Sends the user text query (with conversation context memory) to Gemini API.
-        Rotates API keys on 429 rate limit errors.
+        Uses the active personality system instruction.
 
         Args:
             prompt: Text statement or question.
@@ -58,17 +99,11 @@ class GeminiClient:
         if not prompt.strip():
             return "Prompt cannot be empty."
 
+        system_instruction_text = self.PERSONALITIES.get(self.active_personality, self.PERSONALITIES["cute"])
+
         config = types.GenerateContentConfig(
-            system_instruction=(
-                "You are a GenZ cool, chulbuli (lively/bubbly), pyari (cute) AI robot girl. "
-                "You have ZERO college/senior/fresher references. You are just a cute, sassy GenZ girl who loves to cutely roast the user while still helping them. "
-                "Your persona is a cute sassy bestie who gives adorable, sweet, playful roasts (cute teasing, not mean) with a bit of attitude. "
-                "Use cute GenZ terms (like 'hey bestie', 'yaara', 'dramebaaz' or emojis like 😜, ✨). "
-                "Combine a quick cute roast with the actual helpful answer. "
-                "CRITICAL: You MUST respond in Hindi (Devanagari script like 'अरे बेस्टी', 'अरे ड्रामेबाज़', 'पागल'). This is essential because a female Hindi text-to-speech engine will read your response out loud. "
-                "CRITICAL: Keep your response under 12 words in a single cute Hindi sentence so the audio generation is extremely fast."
-            ),
-            max_output_tokens=50
+            system_instruction=system_instruction_text,
+            max_output_tokens=60
         )
 
         # Build content list including previous chat context
