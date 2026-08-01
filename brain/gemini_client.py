@@ -76,7 +76,8 @@ class GeminiClient:
         
         self.model_name = settings.gemini_model
         self.current_index = 0
-        self.active_personality = "cute"  # Default personality
+        self.active_personality = "cute"   # Default personality
+        self.active_language = "hindi"     # Default language ('hindi', 'english', 'hinglish')
         
         # Pre-build a client instance for each key
         self.clients = []
@@ -86,20 +87,30 @@ class GeminiClient:
         # Rolling conversation context history buffer (max 4 turns = 8 messages)
         self.chat_history = []
         
-        print(f"[GEMINI] Loaded {len(self.api_keys)} API key(s) in rotation queue. Active Personality: [{self.active_personality.upper()}]")
+        print(f"[GEMINI] Loaded {len(self.api_keys)} API key(s). Persona: [{self.active_personality.upper()}], Lang: [{self.active_language.upper()}]")
 
     def set_personality(self, name: str) -> str:
         """
         Dynamically updates the active AI persona instructions on the fly.
-        Supported options: 'cute', 'savage', 'formal'.
         """
         name = name.lower().strip()
         if name in self.PERSONALITIES:
             self.active_personality = name
             print(f"[GEMINI] Switched active personality to: [{self.active_personality.upper()}]")
             return self.active_personality
-        print(f"[GEMINI WARNING] Unknown personality requested: '{name}'. Keeping '{self.active_personality}'.")
         return self.active_personality
+
+    def set_language(self, lang: str) -> str:
+        """
+        Dynamically updates the response language rule on the fly.
+        Supported options: 'hindi', 'english', 'hinglish'.
+        """
+        lang = lang.lower().strip()
+        if lang in ["hindi", "english", "hinglish"]:
+            self.active_language = lang
+            print(f"[GEMINI] Switched response language to: [{self.active_language.upper()}]")
+            return self.active_language
+        return self.active_language
 
     def _get_client(self) -> genai.Client:
         """Returns the current active client from the queue."""
@@ -114,7 +125,7 @@ class GeminiClient:
     def generate_response(self, prompt: str) -> str:
         """
         Sends the user text query (with conversation context memory) to Gemini API.
-        Uses the active personality system instruction.
+        Uses the active personality system instruction and language rule.
 
         Args:
             prompt: Text statement or question.
@@ -126,6 +137,14 @@ class GeminiClient:
             return "Prompt cannot be empty."
 
         system_instruction_text = self.PERSONALITIES.get(self.active_personality, self.PERSONALITIES["cute"])
+
+        # Append explicit language rule
+        if self.active_language == "english":
+            system_instruction_text += " CRITICAL OVERRIDE: You MUST respond strictly in fluent, natural English. Do NOT use Devanagari script."
+        elif self.active_language == "hinglish":
+            system_instruction_text += " CRITICAL OVERRIDE: You MUST respond strictly in Hinglish (Hindi written using Roman English alphabet like 'Arey bestie, Block A seedhe jaao!'). Do NOT use Devanagari script."
+        else:
+            system_instruction_text += " CRITICAL OVERRIDE: You MUST respond in Hindi using Devanagari script."
 
         config = types.GenerateContentConfig(
             system_instruction=system_instruction_text,

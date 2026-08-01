@@ -25,9 +25,10 @@ class ConversationPipeline:
         self.ws_server = WebSocketServer()
         self.ws_server.start()
         
-        # Register incoming web query and personality callbacks
+        # Register incoming web query, personality, and language callbacks
         self.ws_server.on_query_callback = self.run_turn
         self.ws_server.on_personality_callback = self.gemini.set_personality
+        self.ws_server.on_language_callback = self.gemini.set_language
         
         # Initialize the Decoupled Audio Layer (Factory Router)
         self.audio = AudioManager(self.ws_server)

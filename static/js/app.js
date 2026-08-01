@@ -185,6 +185,9 @@ class RobotDashboard {
                 case "personality_status":
                     this.updatePersonalityUI(data.personality);
                     break;
+                case "language_status":
+                    this.updateLanguageUI(data.language);
+                    break;
                 default:
                     console.log(`[DASHBOARD] Unrouted event:`, data);
             }
@@ -410,6 +413,15 @@ class RobotDashboard {
                 this.selectPersonality(persona);
             });
         });
+
+        // Response Language Switcher Buttons
+        const langButtons = document.querySelectorAll(".language-btn");
+        langButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+                const lang = btn.getAttribute("data-lang");
+                this.selectLanguage(lang);
+            });
+        });
     }
 
     selectPersonality(persona) {
@@ -444,6 +456,38 @@ class RobotDashboard {
                 btn.className = "personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-primary/50 bg-primary/10 transition-all cursor-pointer opacity-100";
             } else {
                 btn.className = "personality-btn flex flex-col items-center justify-center gap-1 p-3 rounded-xl border border-[#1f222d] bg-[#0e1014] hover:bg-[#14161d] transition-all cursor-pointer opacity-70";
+            }
+        });
+    }
+
+    selectLanguage(lang) {
+        if (navigator.vibrate) {
+            navigator.vibrate(40);
+        }
+        this.sendControlCommand({ language: lang });
+        this.updateLanguageUI(lang);
+    }
+
+    updateLanguageUI(lang) {
+        const badgeEl = document.getElementById("current-language-badge");
+        const langButtons = document.querySelectorAll(".language-btn");
+        
+        const labels = {
+            "hindi": "🇮🇳 HINDI",
+            "english": "🇬🇧 ENGLISH",
+            "hinglish": "🔤 HINGLISH"
+        };
+        
+        if (badgeEl) {
+            badgeEl.innerText = labels[lang] || lang.toUpperCase();
+        }
+        
+        langButtons.forEach(btn => {
+            const l = btn.getAttribute("data-lang");
+            if (l === lang) {
+                btn.className = "language-btn flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-primary/50 bg-primary/10 transition-all cursor-pointer opacity-100";
+            } else {
+                btn.className = "language-btn flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-[#1f222d] bg-[#0e1014] hover:bg-[#14161d] transition-all cursor-pointer opacity-70";
             }
         });
     }

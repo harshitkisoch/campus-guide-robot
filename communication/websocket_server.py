@@ -184,6 +184,14 @@ class WebSocketServer:
                     print(f"[WS SERVER] AI Personality updated to: [{new_persona.upper()}]")
                     self.broadcast_to_phones("personality_status", {"personality": new_persona})
 
+            # 2. Check Language Switcher request
+            if "language" in data:
+                lang_name = data.get("language", "hindi")
+                if hasattr(self, 'on_language_callback') and self.on_language_callback:
+                    new_lang = self.on_language_callback(lang_name)
+                    print(f"[WS SERVER] AI Response Language updated to: [{new_lang.upper()}]")
+                    self.broadcast_to_phones("language_status", {"language": new_lang})
+
             # 2. Forward motion/head controller commands to the ESP32 robot client
             if self.robot_client:
                 try:
