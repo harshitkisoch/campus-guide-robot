@@ -2,6 +2,7 @@ from config.settings import settings
 from audio.base_output import BaseAudioOutput
 from audio.bluetooth_output import BluetoothAudioOutput
 from audio.esp32_output import ESP32AudioOutput
+from audio.sarvam_output import SarvamAudioOutput
 from communication.websocket_server import WebSocketServer
 
 class AudioManager:
@@ -23,6 +24,8 @@ class AudioManager:
 
         if self.device_name == "esp32":
             self.driver = ESP32AudioOutput(ws_server)
+        elif self.device_name == "sarvam":
+            self.driver = SarvamAudioOutput()
         else:
             # Default fallback is local Bluetooth/laptop sound card
             self.driver = BluetoothAudioOutput()

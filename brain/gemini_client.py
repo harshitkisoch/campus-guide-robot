@@ -6,22 +6,48 @@ from config.settings import settings
 class GeminiClient:
     """
     Handles connectivity and interactions with Google's Gemini LLM.
-    Uses credentials and settings supplied by the config module.
+    Supports:
+    1. Multiple API keys in a round-robin rotation queue to avoid rate limits.
+    2. Short-term conversational memory (rolling 4-turn context window).
     """
     def __init__(self) -> None:
         """
-        Initializes the Gemini Client with the API key from settings.
+        Parses comma-separated API keys from settings and initializes
+        a queue of GenAI clients for round-robin rotation.
         """
-        # Read verified credentials
-        api_key = settings.gemini_api_key
+        raw_keys = settings.gemini_api_keys
+        self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+        
+        if not self.api_keys:
+            raise ValueError("[GEMINI] No API keys found in GEMINI_API_KEYS. Add at least one key.")
+        
         self.model_name = settings.gemini_model
+        self.current_index = 0
+        
+        # Pre-build a client instance for each key
+        self.clients = []
+        for key in self.api_keys:
+            self.clients.append(genai.Client(api_key=key))
+            
+        # Rolling conversation context history buffer (max 4 turns = 8 messages)
+        self.chat_history = []
+        
+        print(f"[GEMINI] Loaded {len(self.api_keys)} API key(s) in rotation queue with Context Memory enabled.")
 
-        # Instantiate official GenAI client
-        self.client = genai.Client(api_key=api_key)
+    def _get_client(self) -> genai.Client:
+        """Returns the current active client from the queue."""
+        return self.clients[self.current_index]
+
+    def _rotate_key(self) -> None:
+        """Advances to the next API key in the round-robin queue."""
+        old_index = self.current_index
+        self.current_index = (self.current_index + 1) % len(self.clients)
+        print(f"[GEMINI] Key #{old_index + 1} hit rate limit. Rotated to key #{self.current_index + 1}/{len(self.clients)}.")
 
     def generate_response(self, prompt: str) -> str:
         """
-        Sends the user text query to Gemini API and returns the text response.
+        Sends the user text query (with conversation context memory) to Gemini API.
+        Rotates API keys on 429 rate limit errors.
 
         Args:
             prompt: Text statement or question.
@@ -32,39 +58,65 @@ class GeminiClient:
         if not prompt.strip():
             return "Prompt cannot be empty."
 
-        try:
-            # Query the AI model with strict instruction to keep it short (speeds up generation)
-            config = types.GenerateContentConfig(
-                system_instruction=(
-                    "You are a witty, sarcastic senior college girl guide robot at JECRC University. "
-                    "Your persona is a funny, high-attitude, playful roaster who loves to roast freshers (first-year students) in a likeable, friendly, senior-junior banter way. "
-                    "Use modern campus slang (like 'bro', 'fresher'). "
-                    "CRITICAL: Be both roasty and helpful! Combine a light, funny roast with the actual correct answer/information so people find you useful and love interacting with you. "
-                    "CRITICAL: You MUST always respond strictly in fluent English. Never use Hindi or Hinglish words, so that speech synthesis is perfectly clear. "
-                    "CRITICAL: Use only simple, common English words that are extremely easy to listen to, pronounce, and understand when read out loud. Avoid complex vocabulary or tongue twisters. "
-                    "CRITICAL: Keep your response extremely short, under 18 words, and in a single concise sentence so the speech plays quickly."
-                ),
-                max_output_tokens=60
-            )
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=config
-            )
-            
-            if response.text:
-                return response.text.strip()
-            else:
-                return "Error: Gemini returned an empty response."
+        config = types.GenerateContentConfig(
+            system_instruction=(
+                "You are a GenZ cool, chulbuli (lively/bubbly), pyari (cute) AI robot girl. "
+                "You have ZERO college/senior/fresher references. You are just a cute, sassy GenZ girl who loves to cutely roast the user while still helping them. "
+                "Your persona is a cute sassy bestie who gives adorable, sweet, playful roasts (cute teasing, not mean) with a bit of attitude. "
+                "Use cute GenZ terms (like 'hey bestie', 'yaara', 'dramebaaz' or emojis like 😜, ✨). "
+                "Combine a quick cute roast with the actual helpful answer. "
+                "CRITICAL: You MUST respond in Hindi (Devanagari script like 'अरे बेस्टी', 'अरे ड्रामेबाज़', 'पागल'). This is essential because a female Hindi text-to-speech engine will read your response out loud. "
+                "CRITICAL: Keep your response under 12 words in a single cute Hindi sentence so the audio generation is extremely fast."
+            ),
+            max_output_tokens=50
+        )
 
-        except errors.APIError as e:
-            # Handle standard API problems (authentication, rate limits, quota)
-            error_msg = f"[Gemini API Error] {e.message} (Status: {e.code})"
-            print(f"[ERROR] {error_msg}")
-            return f"Sorry, I had an API issue: {e.message}"
-            
-        except Exception as e:
-            # Handle connection losses or DNS drops
-            error_msg = f"[Network Error] Could not connect to Gemini: {e}"
-            print(f"[ERROR] {error_msg}")
-            return "I am currently disconnected from my cloud server. Please check my network."
+        # Build content list including previous chat context
+        contents_payload = []
+        for msg in self.chat_history:
+            contents_payload.append(msg)
+        contents_payload.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
+
+        # Try every key in the queue before giving up
+        attempts = len(self.clients)
+        for attempt in range(attempts):
+            try:
+                client = self._get_client()
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents_payload,
+                    config=config
+                )
+                
+                if response.text:
+                    reply_text = response.text.strip()
+                    
+                    # Update rolling chat memory buffer (max 4 turns = 8 items)
+                    self.chat_history.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
+                    self.chat_history.append(types.Content(role="model", parts=[types.Part.from_text(text=reply_text)]))
+                    if len(self.chat_history) > 8:
+                        self.chat_history = self.chat_history[-8:]
+                        
+                    return reply_text
+                else:
+                    return "Error: Gemini returned an empty response."
+
+            except errors.APIError as e:
+                error_code = getattr(e, 'code', 0)
+                if error_code == 429:
+                    print(f"[GEMINI] Key #{self.current_index + 1} rate limited: {e.message}")
+                    self._rotate_key()
+                    continue
+                else:
+                    print(f"[ERROR] [Gemini API Error] {e.message} (Status: {error_code})")
+                    return f"Sorry, I had an API issue: {e.message}"
+                
+            except Exception as e:
+                error_msg = f"[Network Error] Could not connect to Gemini: {e}"
+                print(f"[ERROR] {error_msg}")
+                self._rotate_key()
+                continue
+
+        # All keys exhausted
+        print("[GEMINI] ALL API keys exhausted. Every key hit its rate limit.")
+        return "अरे बेस्टी, मेरे सारे दिमाग के सेल्स फ्राय हो गए! एक मिनट बाद पूछो यार। 😜"

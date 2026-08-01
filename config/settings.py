@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     Validates and stores application configurations loaded from the environment/.env.
     Type constraints are checked at startup to prevent invalid values.
     """
-    # Gemini API settings
-    gemini_api_key: str = Field(..., alias="GEMINI_API_KEY")
+    # Gemini API settings (comma-separated keys for round-robin rotation)
+    gemini_api_keys: str = Field(..., alias="GEMINI_API_KEYS")
     gemini_model: str = Field("gemini-3.5-flash-lite", alias="GEMINI_MODEL")
 
     # Text-To-Speech settings
@@ -27,8 +27,11 @@ class Settings(BaseSettings):
     ws_host: str = Field("0.0.0.0", alias="WS_HOST")
     ws_port: int = Field(8765, alias="WS_PORT")
 
-    # Audio Output Configuration (Phase 4.2 - "bluetooth" or "esp32")
+    # Audio Output Configuration ("bluetooth", "esp32", or "sarvam")
     output_device: str = Field("bluetooth", alias="OUTPUT_DEVICE")
+
+    # Sarvam AI Hindi TTS API Key (optional, required only when OUTPUT_DEVICE=sarvam)
+    sarvam_api_key: str = Field("", alias="SARVAM_API_KEY")
 
     # Tell Pydantic settings where to find the local .env file
     model_config = SettingsConfigDict(

@@ -11,6 +11,11 @@
 #include <ESP8266SAM.h>
 #include <AudioOutputI2S.h>
 #include <ArduinoWebsockets.h>
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESP8266SAM.h>
+#include <AudioOutputI2S.h>
+#include <ArduinoWebsockets.h>
 #include <ArduinoJson.h>
 #include "wifi_credentials.h"
 
@@ -24,6 +29,65 @@ using namespace websockets;
 #define PWM_LEFT_EN         14
 #define PWM_RIGHT_EN        27
 #define SERVO_ROTATION_PIN  13
+
+// --- MAX7219 4-in-1 Cascaded LED Matrix Pins (VSPI Hardware Pins) ---
+#define LED_MATRIX_DIN      23
+#define LED_MATRIX_CLK      18
+#define LED_MATRIX_CS       5
+#define LED_MATRIX_COUNT    4
+
+// --- Selection 1: Row 2, Frame 4 (Neutral/Resting Mouth) ---
+byte frameRow2Col4[8][4] = {
+  {0x00, 0x00, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x00},
+  {0x0C, 0x3C, 0x3C, 0x30}, // Curved lip line
+  {0x06, 0x00, 0x00, 0x60},
+  {0x03, 0xFF, 0xFF, 0xC0}, // Main mouth closure
+  {0x00, 0x7E, 0x7E, 0x00},
+  {0x00, 0x00, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x00}
+};
+
+// --- Selection 2: Row 4, Frame 4 (Small Open / Transition) ---
+byte frameRow4Col4[8][4] = {
+  {0x00, 0x00, 0x00, 0x00},
+  {0x00, 0x38, 0x1C, 0x00},
+  {0x06, 0x44, 0x22, 0x60},
+  {0x03, 0x80, 0x01, 0xC0}, // Slight opening gap
+  {0x03, 0x80, 0x01, 0xC0},
+  {0x01, 0xC0, 0x03, 0x80},
+  {0x00, 0x7F, 0xFE, 0x00},
+  {0x00, 0x00, 0x00, 0x00}
+};
+
+// --- Selection 3: Row 3, Frame 2 (Medium Open Talk) ---
+byte frameRow3Col2[8][4] = {
+  {0x00, 0x00, 0x00, 0x00},
+  {0x00, 0x7C, 0x3E, 0x00},
+  {0x03, 0xC0, 0x03, 0xC0},
+  {0x07, 0x00, 0x00, 0xE0}, // Clear inner cavity
+  {0x07, 0x00, 0x00, 0xE0},
+  {0x03, 0xE0, 0x07, 0xC0},
+  {0x01, 0xFF, 0xFF, 0x80},
+  {0x00, 0x3E, 0x7C, 0x00}
+};
+
+// --- Selection 4: Row 3, Frame 3 (Wide Open / Accent Syllables) ---
+byte frameRow3Col3[8][4] = {
+  {0x00, 0x00, 0x00, 0x00},
+  {0x00, 0xFE, 0x7F, 0x00},
+  {0x03, 0x80, 0x01, 0xC0},
+  {0x07, 0x00, 0x00, 0xE0}, // Wide open tall mouth
+  {0x07, 0x00, 0x00, 0xE0},
+  {0x03, 0x80, 0x01, 0xC0},
+  {0x01, 0xC0, 0x03, 0x80},
+  {0x00, 0x7F, 0xFE, 0x00}
+};
+
+// Real-time LED Mouth Animation state
+bool isSpeakingMouth = false;
+unsigned long lastMouthFrameTime = 0;
+int currentMouthInterval = 100;
 
 // LEDC channels (ESP32 PWM managers)
 #define LEDC_LEFT_CHANNEL   1
@@ -57,6 +121,9 @@ void onEventsCallback(WebsocketsEvent event, String data);
 void speakText(const String &text);
 void initChassisMotors();
 void initHeadServo();
+void initLedMatrix();
+void updateMouthAnimation();
+void drawMouthFrame(byte frame[8][4]);
 void driveRobot(const String &cmd, int speedPercent);
 void setHeadAngle(int degrees);
 void toggleServoTracking(bool enabled);
@@ -80,15 +147,19 @@ void setup() {
   // 5. Attempt initial connection to Python WebSocket server
   connectToWebSocket();
 
-  // 6. Initialize DC Motor outputs & Head Servo
+  // 6. Initialize DC Motor outputs, Head Servo & LED Mouth Matrix
   initChassisMotors();
   initHeadServo();
+  initLedMatrix();
 
   // 7. Signal readiness over serial
   Serial.println("ESP32 READY");
 }
 
 void loop() {
+  // Non-blocking LED mouth animation frame renderer
+  updateMouthAnimation();
+
   // 1. Check Wi-Fi state. If dropped, reconnect immediately
   if (WiFi.status() != WL_CONNECTED) {
     connectToWiFi();
@@ -229,15 +300,16 @@ void onMessageCallback(WebsocketsMessage message) {
       Serial.println(action);
       
       if (strcmp(action, "speaking") == 0) {
-        // Speech started on laptop - print the text being spoken
+        // Speech started on server - trigger real-time LED mouth matrix animation
         const char* text = doc["text"];
         Serial.print("[SPEAKING ON LAPTOP] \"");
         Serial.print(text);
         Serial.println("\"");
-        // FUTURE: Start eye/mouth LED animations here
+        isSpeakingMouth = true;
       } else if (strcmp(action, "idle") == 0) {
         Serial.println("[IDLE] Waiting for next query...");
-        // FUTURE: Stop animations here
+        isSpeakingMouth = false;
+        drawMouthFrame(frameRow2Col4);
       }
     }
   }
@@ -345,7 +417,8 @@ void initHeadServo() {
  * Actuates chassis DC motors based on target steering commands and speeds.
  */
 void driveRobot(const String &cmd, int speedPercent) {
-  int duty = map(speedPercent, 0, 100, 0, 255);
+  // Motor Dead-Zone Compensation: floor non-zero speeds at PWM duty 70 to overcome static friction
+  int duty = (speedPercent == 0) ? 0 : map(speedPercent, 1, 100, 70, 255);
   Serial.print("[ACTUATING] Driving ");
   Serial.print(cmd);
   Serial.print(" at speed ");
@@ -414,5 +487,93 @@ void setHeadAngle(int degrees) {
 void toggleServoTracking(bool enabled) {
   Serial.print("[ACTUATING] Servo Tracking Mode set to: ");
   Serial.println(enabled ? "ON" : "OFF");
+}
+
+/**
+ * Writes 16-bit register and data payload to all cascaded MAX7219 modules.
+ */
+void max7219_send_all(byte reg, byte data) {
+  digitalWrite(LED_MATRIX_CS, LOW);
+  for (int i = 0; i < LED_MATRIX_COUNT; i++) {
+    shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, reg);
+    shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, data);
+  }
+  digitalWrite(LED_MATRIX_CS, HIGH);
+}
+
+/**
+ * Writes row byte to a specific module in the cascaded MAX7219 chain.
+ */
+void max7219_set_row(int module, int row, byte data) {
+  digitalWrite(LED_MATRIX_CS, LOW);
+  for (int i = 0; i < LED_MATRIX_COUNT; i++) {
+    if (i == (LED_MATRIX_COUNT - 1 - module)) {
+      shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, row + 1);
+      shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, data);
+    } else {
+      shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, 0x00);
+      shiftOut(LED_MATRIX_DIN, LED_MATRIX_CLK, MSBFIRST, 0x00);
+    }
+  }
+  digitalWrite(LED_MATRIX_CS, HIGH);
+}
+
+/**
+ * Initializes MAX7219 4-in-1 cascaded LED matrix modules for mouth display.
+ */
+void initLedMatrix() {
+  pinMode(LED_MATRIX_DIN, OUTPUT);
+  pinMode(LED_MATRIX_CLK, OUTPUT);
+  pinMode(LED_MATRIX_CS, OUTPUT);
+  digitalWrite(LED_MATRIX_CS, HIGH);
+
+  randomSeed(analogRead(0));
+
+  max7219_send_all(0x0C, 0x01); // Normal operation (shutdown = false)
+  max7219_send_all(0x09, 0x00); // No decode
+  max7219_send_all(0x0B, 0x07); // Scan limit: 8 rows
+  max7219_send_all(0x0A, 0x08); // Medium-high brightness (0-15)
+
+  // Clear display
+  for (int r = 0; r < 8; r++) {
+    max7219_send_all(r + 1, 0x00);
+  }
+
+  // Render neutral resting mouth on initialization
+  drawMouthFrame(frameRow2Col4);
+  Serial.println("[MOUTH DISPLAY] Native ESP32 MAX7219 4-in-1 driver initialized.");
+}
+
+/**
+ * Non-blocking animation loop tick that updates the mouth frame when speaking.
+ */
+void updateMouthAnimation() {
+  if (isSpeakingMouth) {
+    unsigned long now = millis();
+    if (now - lastMouthFrameTime >= currentMouthInterval) {
+      lastMouthFrameTime = now;
+      
+      int nextFrame = random(1, 4);
+      switch (nextFrame) {
+        case 1: drawMouthFrame(frameRow4Col4); break; // Small open
+        case 2: drawMouthFrame(frameRow3Col2); break; // Medium open
+        case 3: drawMouthFrame(frameRow3Col3); break; // Wide open
+      }
+      
+      // Natural human speech timing per phoneme (70ms - 160ms)
+      currentMouthInterval = random(70, 160);
+    }
+  }
+}
+
+/**
+ * Draws an 8x32 mouth frame across 4 cascaded MAX7219 LED modules.
+ */
+void drawMouthFrame(byte frame[8][4]) {
+  for (int row = 0; row < 8; row++) {
+    for (int module = 0; module < 4; module++) {
+      max7219_set_row(module, row, frame[row][module]);
+    }
+  }
 }
 

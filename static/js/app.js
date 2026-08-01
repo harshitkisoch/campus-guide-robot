@@ -403,14 +403,36 @@ class RobotDashboard {
     bindDpadButton(buttonEl, command) {
         if (!buttonEl) return;
         
-        // Mouse/Touch triggers for continuous control commands
-        buttonEl.addEventListener("mousedown", () => {
+        const triggerVibration = () => {
+            if (navigator.vibrate) {
+                navigator.vibrate(35);
+            }
+        };
+
+        const startDrive = (e) => {
+            if (e) e.preventDefault();
+            triggerVibration();
             this.sendControlCommand({ command: command });
-        });
-        buttonEl.addEventListener("touchstart", (e) => {
-            e.preventDefault();
-            this.sendControlCommand({ command: command });
-        });
+        };
+
+        const stopDrive = (e) => {
+            if (e) e.preventDefault();
+            // Automatically stop motors when releasing directional buttons
+            if (command !== "stop") {
+                this.sendControlCommand({ command: "stop" });
+            }
+        };
+
+        // Touch & Mouse Press events
+        buttonEl.addEventListener("mousedown", startDrive);
+        buttonEl.addEventListener("touchstart", startDrive);
+
+        // Touch & Mouse Release events (auto-stop safety)
+        if (command !== "stop") {
+            buttonEl.addEventListener("mouseup", stopDrive);
+            buttonEl.addEventListener("mouseleave", stopDrive);
+            buttonEl.addEventListener("touchend", stopDrive);
+        }
     }
     
     sendQuery() {

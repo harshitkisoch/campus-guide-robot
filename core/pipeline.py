@@ -64,18 +64,20 @@ class ConversationPipeline:
         
         print(f"[PIPELINE] Response received in {latency:.2f} seconds.")
         print(f"\nGemini Response: {response_text}\n")
-        # 2. Broadcast speaking status to all phone dashboards
+        # 2. Broadcast response immediately to phone dashboard so text displays instantly
         self.ws_server.broadcast_to_phones("status", {"action": "speaking", "text": response_text})
-
-        # 3. Speak the response via the Audio Layer (Decoupled Output strategy)
-        self.audio.speak(response_text)
-
-        # 4. Broadcast return to idle and append response to web app history lists
-        self.ws_server.broadcast_to_phones("status", {"action": "idle"})
         self.ws_server.broadcast_to_phones("response", {
             "question": clean_input,
             "answer": response_text
         })
+
+        # 3. Speak the response asynchronously in a background thread to prevent UI freezing
+        import threading
+        def speak_and_reset():
+            self.audio.speak(response_text)
+            self.ws_server.broadcast_to_phones("status", {"action": "idle"})
+
+        threading.Thread(target=speak_and_reset, daemon=True).start()
 
     def close(self) -> None:
         """
