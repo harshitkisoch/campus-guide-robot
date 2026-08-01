@@ -7,12 +7,42 @@
  */
 
 #include <Arduino.h>
-#include <WiFi.h>
-#include <ESP8266SAM.h>
-#include <AudioOutputI2S.h>
-#include <ArduinoWebsockets.h>
-#include <Arduino.h>
-#include <WiFi.h>
+
+#ifdef ESP8266
+  #include <ESP8266WiFi.h>
+  // ESP8266 NodeMCU Pin Architecture (D1-D8 mappings)
+  #define MOTOR_LEFT_IN1      5  // D1
+  #define MOTOR_LEFT_IN2      4  // D2
+  #define MOTOR_RIGHT_IN3     14 // D5
+  #define MOTOR_RIGHT_IN4     12 // D6
+  #define PWM_LEFT_EN         5
+  #define PWM_RIGHT_EN        14
+  #define SERVO_ROTATION_PIN  0  // D3
+  #define LED_MATRIX_DIN      13 // D7 (MOSI)
+  #define LED_MATRIX_CLK      14 // D5 (CLK)
+  #define LED_MATRIX_CS       15 // D8 (CS)
+  #define LED_MATRIX_COUNT    4
+#else
+  #include <WiFi.h>
+  // ESP32 Dev Module Pin Architecture
+  #define MOTOR_LEFT_IN1      16
+  #define MOTOR_LEFT_IN2      17
+  #define MOTOR_RIGHT_IN3     18
+  #define MOTOR_RIGHT_IN4     19
+  #define PWM_LEFT_EN         14
+  #define PWM_RIGHT_EN        27
+  #define SERVO_ROTATION_PIN  13
+  #define LED_MATRIX_DIN      23
+  #define LED_MATRIX_CLK      18
+  #define LED_MATRIX_CS       5
+  #define LED_MATRIX_COUNT    4
+  
+  // LEDC channels (ESP32 PWM managers)
+  #define LEDC_LEFT_CHANNEL   1
+  #define LEDC_RIGHT_CHANNEL  2
+  #define LEDC_SERVO_CHANNEL  3
+#endif
+
 #include <ESP8266SAM.h>
 #include <AudioOutputI2S.h>
 #include <ArduinoWebsockets.h>
@@ -20,21 +50,6 @@
 #include "wifi_credentials.h"
 
 using namespace websockets;
-
-// --- HMI Hardware Pin Architecture ---
-#define MOTOR_LEFT_IN1      16
-#define MOTOR_LEFT_IN2      17
-#define MOTOR_RIGHT_IN3     18
-#define MOTOR_RIGHT_IN4     19
-#define PWM_LEFT_EN         14
-#define PWM_RIGHT_EN        27
-#define SERVO_ROTATION_PIN  13
-
-// --- MAX7219 4-in-1 Cascaded LED Matrix Pins (VSPI Hardware Pins) ---
-#define LED_MATRIX_DIN      23
-#define LED_MATRIX_CLK      18
-#define LED_MATRIX_CS       5
-#define LED_MATRIX_COUNT    4
 
 // --- Selection 1: Row 2, Frame 4 (Neutral/Resting Mouth) ---
 byte frameRow2Col4[8][4] = {
@@ -376,8 +391,27 @@ void speakText(const String &text) {
   audioOut->stop();
 }
 
+inline void setMotorPwm(int leftDuty, int rightDuty) {
+#ifdef ESP8266
+  analogWrite(PWM_LEFT_EN, map(leftDuty, 0, 255, 0, 1023));
+  analogWrite(PWM_RIGHT_EN, map(rightDuty, 0, 255, 0, 1023));
+#else
+  ledcWrite(LEDC_LEFT_CHANNEL, leftDuty);
+  ledcWrite(LEDC_RIGHT_CHANNEL, rightDuty);
+#endif
+}
+
+inline void writeServoPulse(int degrees) {
+#ifdef ESP8266
+  analogWrite(SERVO_ROTATION_PIN, map(degrees, 0, 180, 25, 125));
+#else
+  int duty = map(degrees, 0, 180, 102, 512); 
+  ledcWrite(LEDC_SERVO_CHANNEL, duty);
+#endif
+}
+
 /**
- * Initializes pins and LEDC PWM timers for dual DC motor drivers (L298N/TB6612).
+ * Initializes pins and PWM timers for dual DC motor drivers (L298N/TB6612).
  */
 void initChassisMotors() {
   pinMode(MOTOR_LEFT_IN1, OUTPUT);
@@ -390,25 +424,27 @@ void initChassisMotors() {
   digitalWrite(MOTOR_RIGHT_IN3, LOW);
   digitalWrite(MOTOR_RIGHT_IN4, LOW);
 
+#ifndef ESP8266
   // Setup Left & Right speed control PWM signals using ESP32 LEDC (5kHz, 8-bit)
   ledcSetup(LEDC_LEFT_CHANNEL, 5000, 8);
   ledcAttachPin(PWM_LEFT_EN, LEDC_LEFT_CHANNEL);
   
   ledcSetup(LEDC_RIGHT_CHANNEL, 5000, 8);
   ledcAttachPin(PWM_RIGHT_EN, LEDC_RIGHT_CHANNEL);
+#endif
   
-  ledcWrite(LEDC_LEFT_CHANNEL, 0);
-  ledcWrite(LEDC_RIGHT_CHANNEL, 0);
-  
+  setMotorPwm(0, 0);
   Serial.println("[ACTUATING] DC Chassis Motor drivers initialized.");
 }
 
 /**
- * Configures the LEDC PWM channel for head rotation servo sweep (50Hz, 12-bit).
+ * Configures the PWM channel for head rotation servo sweep.
  */
 void initHeadServo() {
+#ifndef ESP8266
   ledcSetup(LEDC_SERVO_CHANNEL, 50, 12);
   ledcAttachPin(SERVO_ROTATION_PIN, LEDC_SERVO_CHANNEL);
+#endif
   setHeadAngle(90); // Center head rotation on startup
   Serial.println("[ACTUATING] Head sweep rotation servo initialized.");
 }
@@ -430,51 +466,44 @@ void driveRobot(const String &cmd, int speedPercent) {
     digitalWrite(MOTOR_LEFT_IN2, LOW);
     digitalWrite(MOTOR_RIGHT_IN3, HIGH);
     digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    ledcWrite(LEDC_LEFT_CHANNEL, duty);
-    ledcWrite(LEDC_RIGHT_CHANNEL, duty);
+    setMotorPwm(duty, duty);
   } 
   else if (cmd.equals("down")) {
     digitalWrite(MOTOR_LEFT_IN1, LOW);
     digitalWrite(MOTOR_LEFT_IN2, HIGH);
     digitalWrite(MOTOR_RIGHT_IN3, LOW);
     digitalWrite(MOTOR_RIGHT_IN4, HIGH);
-    ledcWrite(LEDC_LEFT_CHANNEL, duty);
-    ledcWrite(LEDC_RIGHT_CHANNEL, duty);
+    setMotorPwm(duty, duty);
   } 
   else if (cmd.equals("left")) {
     digitalWrite(MOTOR_LEFT_IN1, LOW);
     digitalWrite(MOTOR_LEFT_IN2, HIGH);
     digitalWrite(MOTOR_RIGHT_IN3, HIGH);
     digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    ledcWrite(LEDC_LEFT_CHANNEL, duty);
-    ledcWrite(LEDC_RIGHT_CHANNEL, duty);
+    setMotorPwm(duty, duty);
   } 
   else if (cmd.equals("right")) {
     digitalWrite(MOTOR_LEFT_IN1, HIGH);
     digitalWrite(MOTOR_LEFT_IN2, LOW);
     digitalWrite(MOTOR_RIGHT_IN3, LOW);
     digitalWrite(MOTOR_RIGHT_IN4, HIGH);
-    ledcWrite(LEDC_LEFT_CHANNEL, duty);
-    ledcWrite(LEDC_RIGHT_CHANNEL, duty);
+    setMotorPwm(duty, duty);
   } 
   else if (cmd.equals("stop")) {
     digitalWrite(MOTOR_LEFT_IN1, LOW);
     digitalWrite(MOTOR_LEFT_IN2, LOW);
     digitalWrite(MOTOR_RIGHT_IN3, LOW);
     digitalWrite(MOTOR_RIGHT_IN4, LOW);
-    ledcWrite(LEDC_LEFT_CHANNEL, 0);
-    ledcWrite(LEDC_RIGHT_CHANNEL, 0);
+    setMotorPwm(0, 0);
   }
 }
 
 /**
- * Sweeps the head rotation servo using pure ESP32 hardware PWM duty mappings.
+ * Sweeps the head rotation servo using hardware PWM duty mappings.
  */
 void setHeadAngle(int degrees) {
   degrees = constrain(degrees, 0, 180);
-  // Map 0-180 degrees to 50Hz 12-bit duty values (approx 0.5ms - 2.5ms pulse)
-  int duty = map(degrees, 0, 180, 102, 512); 
-  ledcWrite(LEDC_SERVO_CHANNEL, duty);
+  writeServoPulse(degrees);
   
   Serial.print("[ACTUATING] Head rotation servo set to ");
   Serial.print(degrees);
