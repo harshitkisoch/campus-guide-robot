@@ -19,6 +19,14 @@
 
 ---
 
+### 📚 Documentation & Quickstart Guides
+* 🔑 [**API Keys & Quickstart Guide** (कहाँ डालनी हैं Keys?)](file:///h:/campus%20guide%20robot/docs/API_KEYS_AND_QUICKSTART.md) — Simple step-by-step setup guide
+* 🔌 [**NodeMCU Hardware Wiring Guide**](file:///h:/campus%20guide%20robot/docs/HARDWARE_WIRING_NODEMCU.md) — NodeMCU + BTS7960 Motor Driver + MAX7219 Mouth circuit diagrams
+* 📖 [**Setup Guide for New Contributors**](file:///h:/campus%20guide%20robot/docs/SETUP_GUIDE.md) — Complete environment & dependency walkthrough
+* 🏗️ [**Tech Stack Architecture**](file:///h:/campus%20guide%20robot/docs/TECH_STACK.md) — Full technical architecture breakdown
+
+---
+
 # 📖 Project Overview
 
 The **Campus Guide Robot** is an AI-powered robotic assistant designed to answer questions about a university campus in natural language.

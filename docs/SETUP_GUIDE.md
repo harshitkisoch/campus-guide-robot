@@ -51,26 +51,31 @@ campus-guide-robot/
 Copy the contents from `.env.example` and fill in your own values:
 
 ```env
-# Google Gemini API Configuration
-# Get a FREE key from: https://aistudio.google.com/
-GEMINI_API_KEY=paste_your_actual_gemini_api_key_here
-GEMINI_MODEL=gemini-3.5-flash-lite
+# Google Gemini API Configuration (Multi-Key Rotation Queue)
+# Get FREE keys from: https://aistudio.google.com/
+GEMINI_API_KEYS=key_1_here,key_2_here
+GEMINI_MODEL=gemini-1.5-flash
+
+# Sarvam AI API Key (For Hindi Speech Output - Priya Female Voice)
+# Get key from: https://dashboard.sarvam.ai/
+SARVAM_API_KEY=sk_your_sarvam_key_here
+
+# Audio Output Channel ('sarvam' for Hindi, 'bluetooth' for Zira, or 'esp32' for SAM)
+OUTPUT_DEVICE=sarvam
 
 # Text-To-Speech Settings
 TTS_RATE=160
 TTS_VOLUME=1.0
 
-# USB Serial Port (find yours in Device Manager → Ports)
-SERIAL_PORT=COM3
-SERIAL_BAUD_RATE=115200
-
 # WebSocket Configuration (leave defaults)
 WS_HOST=0.0.0.0
 WS_PORT=8765
-
-# Audio Output Channel ("bluetooth" for laptop speaker, "esp32" for robot speaker)
-OUTPUT_DEVICE=bluetooth
 ```
+
+> [!TIP]
+> **For detailed step-by-step instructions on finding keys & setting up NodeMCU wiring, see**:
+> * 🔑 [API Keys & Quickstart Guide](file:///h:/campus%20guide%20robot/docs/API_KEYS_AND_QUICKSTART.md)
+> * 🔌 [NodeMCU Hardware Wiring Guide](file:///h:/campus%20guide%20robot/docs/HARDWARE_WIRING_NODEMCU.md)
 
 > [!CAUTION]
 > **Never commit the `.env` file to GitHub!** It contains your private API key. The `.gitignore` already prevents this, but double-check.
