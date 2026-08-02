@@ -58,10 +58,19 @@ class SarvamAudioOutput(BaseAudioOutput):
                     f.write(audio_bytes)
 
                 print(f"[SARVAM TTS] Playing Hindi audio...")
-                # Use Windows built-in PlaySound (non-blocking is not needed here;
-                # we WANT to block so the next query waits until speech finishes)
-                import winsound
-                winsound.PlaySound(temp_path, winsound.SND_FILENAME)
+                try:
+                    import winsound
+                    winsound.PlaySound(temp_path, winsound.SND_FILENAME)
+                except Exception as play_err:
+                    print(f"[SARVAM TTS WARNING] winsound error ({play_err}), attempting system command playback...")
+                    os.system(f'start /min "" "{temp_path}"')
+                finally:
+                    # Clean up temporary WAV file after playback
+                    try:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception:
+                        pass
 
             else:
                 print(f"[SARVAM TTS ERROR] API returned {response.status_code}: {response.text}")

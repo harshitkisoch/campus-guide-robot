@@ -25,7 +25,12 @@ class AudioManager:
         if self.device_name == "esp32":
             self.driver = ESP32AudioOutput(ws_server)
         elif self.device_name == "sarvam":
-            self.driver = SarvamAudioOutput()
+            try:
+                self.driver = SarvamAudioOutput()
+            except Exception as e:
+                print(f"[AUDIO MANAGER WARNING] Failed to initialize Sarvam TTS ({e}). Falling back to local Bluetooth audio.")
+                self.driver = BluetoothAudioOutput()
+                self.device_name = "bluetooth"
         else:
             # Default fallback is local Bluetooth/laptop sound card
             self.driver = BluetoothAudioOutput()

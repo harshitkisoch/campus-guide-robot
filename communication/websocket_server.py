@@ -255,7 +255,7 @@ class WebSocketServer:
     async def _async_broadcast(self, json_string: str) -> None:
         if not self.phone_clients:
             return
-        # Broadcast concurrently across all browser sockets
+        # Broadcast concurrently across all browser sockets safely handling drops
         await asyncio.gather(
             *(client.send(json_string) for client in list(self.phone_clients)),
             return_exceptions=True
