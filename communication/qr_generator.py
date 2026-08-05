@@ -29,14 +29,16 @@ def generate_qr_code() -> str:
     print("\nScan the QR code below to connect your mobile client:")
     print("-" * 60)
     
-    # 1. Initialize QR Code generator locked to the permanent domain
+    # 1. Initialize QR Code generator locked to the direct IP address for 100% mobile compatibility
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=1,
         border=2
     )
-    qr.add_data(url)
+    # Use direct IP address so Android phones scan and connect instantly
+    target_qr_url = fallback_url if fallback_url else url
+    qr.add_data(target_qr_url)
     qr.make(fit=True)
     
     # 2. Print ASCII QR Code directly into the terminal
